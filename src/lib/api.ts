@@ -113,8 +113,21 @@ async function parseBody(res: Response): Promise<unknown> {
   }
 }
 
+/**
+ * A string body is only worth showing if it is a short, plain-text message the
+ * API meant for a human. Infrastructure error pages (a Vercel 404, an nginx
+ * 502, an HTML error document) also arrive as strings, and dumping those into
+ * the UI shows the user a wall of markup instead of a usable error.
+ */
+function usableTextBody(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed || trimmed.length > 200) return false
+  if (trimmed.startsWith('<')) return false
+  return !/^the page could not be found/i.test(trimmed)
+}
+
 function messageFrom(body: unknown, fallback: string): string {
-  if (typeof body === 'string' && body.trim()) return body
+  if (typeof body === 'string') return usableTextBody(body) ? body.trim() : fallback
   if (body && typeof body === 'object') {
     const m = (body as Record<string, unknown>).message
     if (typeof m === 'string') return m

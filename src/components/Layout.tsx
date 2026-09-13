@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-
 import { useAuth } from '../auth/AuthContext'
 import { initialsOf } from '../lib/format'
 import {
@@ -50,6 +49,7 @@ export function Layout() {
     i.end ? location.pathname === i.to : location.pathname.startsWith(i.to),
   )
 
+  
   return (
     <div className="shell">
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}

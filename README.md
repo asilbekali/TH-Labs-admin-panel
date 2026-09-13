@@ -23,6 +23,56 @@ npm run lint     # oxlint
 npm test         # vitest — boot-sequence regression tests
 ```
 
+## Deploying to Vercel
+
+`vercel.json` carries the two rewrites the app cannot work without:
+
+```json
+{ "source": "/api/:path*", "destination": "https://th-labs.uz/v1/:path*" }
+{ "source": "/(.*)",       "destination": "/index.html" }
+```
+
+The first replaces the Vite dev proxy. Without it `/api/auth/login` hits
+Vercel's static host and comes back `404 NOT_FOUND`, so **every sign-in fails**.
+The second is the SPA fallback — without it `/login` and every other deep link
+404s on reload.
+
+Leave `VITE_API_BASE_URL` **unset** in the Vercel project. Setting it to
+`https://th-labs.uz/v1` makes the browser call the API directly, and the API
+only sends CORS headers for `th-labs.uz`, so the calls are blocked. Routing
+through the rewrite keeps them same-origin.
+
+### Web Analytics
+
+`<Analytics />` is mounted in `src/App.tsx` — above the router, so the login
+screen is measured too, and from `@vercel/analytics/react` (the `/next` entry
+point does not work in a Vite SPA).
+
+It reports through `beforeSend` in `src/lib/analytics.ts`, which rewrites
+`/users/412` to `/users/[id]` and strips the query and hash. Without that, the
+single most-used page in the panel is scattered across one row per customer
+record, and the ids of records staff opened are sent to a third party. No route
+here keeps state in the query string, so nothing is lost by dropping it.
+
+It only injects its script in a production build; `npm run dev` and the test
+suite no-op. Collection still has to be switched on under **Analytics** in the
+Vercel project — the component alone does not enable it.
+
+### The refresh cookie does not survive on `*.vercel.app`
+
+The backend scopes its refresh cookie to `th-labs.uz`. The dev proxy rewrites
+that with `cookieDomainRewrite`, but **Vercel rewrites cannot** — so the browser
+drops the cookie on a `vercel.app` host. Signing in works (the access token
+comes back in the body), but the session will not survive a reload, and it ends
+when the access token expires.
+
+Either fix removes it for good:
+
+1. Serve the panel from a `th-labs.uz` subdomain, so the cookie's domain
+   matches — this is the one to do.
+2. Have the backend omit the `Domain` attribute on the refresh cookie, which
+   pins it to whatever host served it.
+
 ## Why requests go through `/api`
 
 The backend only returns `Access-Control-Allow-Origin` for `https://th-labs.uz`

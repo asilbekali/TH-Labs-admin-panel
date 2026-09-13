@@ -1,4 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+// The React entry point, not /next — this is a Vite SPA. Mounted here rather
+// than inside Layout so the login screen is measured too; it only injects its
+// script in a production build and no-ops elsewhere.
+import { Analytics } from '@vercel/analytics/react'
+import { beforeSend } from './lib/analytics'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { ToastProvider } from './components/Toast'
 import { Layout } from './components/Layout'
@@ -53,6 +58,7 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <Analytics beforeSend={beforeSend} />
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>

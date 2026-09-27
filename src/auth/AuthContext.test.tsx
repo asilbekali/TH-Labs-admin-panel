@@ -43,8 +43,6 @@ beforeEach(() => {
   // The access token lives in module scope, so it would otherwise survive from
   // one test into the next.
   setAccessToken(null)
-  // Same for the built-in admin's session flag.
-  sessionStorage.clear()
 })
 
 afterEach(() => {
@@ -191,64 +189,24 @@ async function signIn(email: string, password: string) {
   fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 }
 
-describe('built-in default admin', () => {
-  /** Nothing signed in, and /auth/login rejects whatever it is given. */
-  function stubBackendWithoutAdmin() {
+describe('the login gate', () => {
+  /**
+   * The panel used to fall back to a built-in SUPERADMIN whenever the backend
+   * rejected a login, which meant a wrong password silently became a fake
+   * session. These pin the behaviour that replaced it: the API is the only
+   * authority on who gets in, and a refusal is shown as a refusal.
+   */
+
+  it('surfaces the API error verbatim when credentials are rejected', async () => {
     vi.stubGlobal(
       'fetch',
       mockFetch((url) => {
         if (url.includes('/auth/login')) {
           return { ok: false, status: 401, json: () => ({ message: 'Invalid credentials' }) }
         }
-        if (url.includes('/auth/refresh')) {
-          return { ok: false, status: 401, json: () => ({ message: 'Missing refresh token' }) }
-        }
-        return { ok: false, status: 401, json: () => ({ message: 'Unauthorized' }) }
+        return { ok: false, status: 401, json: () => ({ message: 'Missing refresh token' }) }
       }),
     )
-  }
-
-  it('signs in when the backend has no matching admin', async () => {
-    stubBackendWithoutAdmin()
-
-    render(
-      <StrictMode>
-        <App />
-      </StrictMode>,
-    )
-
-    await signIn('super@gmail.com', 'iamadmin')
-
-    await waitFor(() => {
-      expect(screen.getByText('Default Admin')).toBeTruthy()
-    })
-    // And it says so, rather than quietly pretending to be a real session.
-    expect(screen.getByText(/default admin account/i)).toBeTruthy()
-  })
-
-  it('stays signed in when the panel 401s on its data calls', async () => {
-    // Every page request comes back 401 because there is no access token. That
-    // must not trigger the session-lost teardown for this account.
-    stubBackendWithoutAdmin()
-
-    render(
-      <StrictMode>
-        <App />
-      </StrictMode>,
-    )
-
-    await signIn('super@gmail.com', 'iamadmin')
-
-    await waitFor(() => {
-      expect(screen.getByText('Default Admin')).toBeTruthy()
-    })
-    // Give the dashboard's failing requests time to settle.
-    await new Promise((r) => setTimeout(r, 50))
-    expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull()
-  })
-
-  it('still reports the real error for any other bad credentials', async () => {
-    stubBackendWithoutAdmin()
 
     render(
       <StrictMode>
@@ -261,12 +219,52 @@ describe('built-in default admin', () => {
     await waitFor(() => {
       expect(screen.getByText(/invalid credentials/i)).toBeTruthy()
     })
+    // Still on the login screen — no fallback session was invented.
     expect(screen.getByRole('button', { name: /sign in/i })).toBeTruthy()
   })
 
-  it('prefers a real backend admin over the built-in one', async () => {
-    // Same credentials, but this backend accepts them — the API session wins
-    // and no fallback banner appears.
+  it('refuses a USER at the door and names the role', async () => {
+    // The credentials are valid and the API issues a real session. The panel
+    // still has to refuse it, rather than showing a dashboard full of 403s.
+    vi.stubGlobal(
+      'fetch',
+      mockFetch((url) => {
+        if (url.includes('/auth/login')) {
+          return {
+            ok: true,
+            status: 200,
+            json: () => ({
+              accessToken: 'token-123',
+              user: {
+                id: 42,
+                email: 'ada@example.com',
+                name: 'Ada',
+                role: 'USER',
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          }
+        }
+        if (url.includes('/auth/refresh')) return { ok: false, status: 401, json: () => ({}) }
+        return { ok: true, status: 200, json: () => [] }
+      }),
+    )
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+
+    await signIn('ada@example.com', 'correct-password')
+
+    await waitFor(() => {
+      expect(screen.getByText(/requires ADMIN or SUPERADMIN/i)).toBeTruthy()
+    })
+    expect(screen.queryByText('Ada')).toBeNull()
+  })
+
+  it('signs a SUPERADMIN in', async () => {
     vi.stubGlobal(
       'fetch',
       mockFetch((url) => {
@@ -297,11 +295,10 @@ describe('built-in default admin', () => {
       </StrictMode>,
     )
 
-    await signIn('super@gmail.com', 'iamadmin')
+    await signIn('super@gmail.com', 'correct-password')
 
     await waitFor(() => {
       expect(screen.getByText('Real Super')).toBeTruthy()
     })
-    expect(screen.queryByText(/default admin account/i)).toBeNull()
   })
 })

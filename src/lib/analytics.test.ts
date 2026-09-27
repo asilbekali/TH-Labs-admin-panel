@@ -9,14 +9,14 @@ describe('normalizeAnalyticsPath', () => {
   })
 
   it('leaves static routes untouched', () => {
-    for (const path of ['/', '/login', '/users', '/admins', '/wait-list', '/billing']) {
+    for (const path of ['/', '/login', '/users', '/admins', '/community', '/billing']) {
       expect(normalizeAnalyticsPath(path)).toBe(path)
     }
   })
 
   it('does not mistake a word for an id', () => {
-    // Only all-digit segments are ids — "wait-list" and "v1" must survive.
-    expect(normalizeAnalyticsPath('/wait-list')).toBe('/wait-list')
+    // Only all-digit segments are ids — "credit-packs" and "v1" must survive.
+    expect(normalizeAnalyticsPath('/credit-packs')).toBe('/credit-packs')
     expect(normalizeAnalyticsPath('/users/me')).toBe('/users/me')
   })
 })

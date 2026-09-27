@@ -56,9 +56,22 @@ export function Admins() {
   return (
     <>
       <p className="page-intro">
-        Staff accounts with panel access, from <code>/v1/admin</code>. Only a SUPERADMIN can create,
-        edit or remove them.
+        Records from the <code>Admin</code> table, via <code>/v1/admin</code>. Only a SUPERADMIN can
+        read, create, edit or remove them.
       </p>
+
+      {/*
+        This is genuinely a different table from `User`. Panel sign-in and every
+        role check run off `User.role`; editing a row here grants nobody access
+        and revoking one locks nobody out. Saying so is the whole point of this
+        note — the endpoint name invites exactly the opposite assumption.
+      */}
+      <InfoNote title="This table does not control who can sign in" tone="warn">
+        These are <strong>not</strong> the accounts that log in to this panel. Sign-in and every
+        permission check run off <code>User.role</code> — see <a href="/users">Users</a> to grant
+        or revoke panel access. Creating a row here gives nobody access; deleting one locks nobody
+        out.
+      </InfoNote>
 
       <div className="toolbar">
         <div className="spacer" />

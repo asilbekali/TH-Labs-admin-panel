@@ -65,7 +65,7 @@ export function formatNumber(value: unknown): string {
   return value.toLocaleString()
 }
 
-/** Turns `stripePriceId` into "Stripe price id" for generic field rendering. */
+/** Turns `dodoProductId` into "Dodo product id" for generic field rendering. */
 export function humanizeKey(key: string): string {
   const spaced = key
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')

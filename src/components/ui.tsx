@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { IconAlert, IconInbox, IconInfo } from './icons'
+import { useState, type ReactNode } from 'react'
+import { IconAlert, IconCheck, IconCopy, IconInbox, IconInfo } from './icons'
 import type { Role } from '../lib/types'
 
 /* -------------------------------------------------------------------------- */
@@ -187,6 +187,197 @@ export function Pagination({
       >
         Next
       </button>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* API-build mismatch                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Shown when *the API* 404s an endpoint — a JSON `404`, not any old one.
+ *
+ * A missing route means "the API is older than this screen", not "something
+ * broke". Saying which is the difference between a five-minute redeploy and an
+ * afternoon of debugging the panel. Which is exactly why this must not fire on
+ * an HTML 404 from a misrouted request — that is WrongApiBaseNote, and it used
+ * to land here and send people off to redeploy a perfectly good backend.
+ */
+export function MissingRouteNote({ routes, what }: { routes: string[]; what: string }) {
+  return (
+    <InfoNote title={`This API build has no ${what} endpoints`} tone="warn">
+      The API answered <code>404</code> for {routes.map((r) => <code key={r}>{r} </code>)}. That
+      route exists in the current backend but is not present in the build this panel is pointed
+      at, so there is nothing to show until the API is redeployed. Nothing is wrong with the
+      panel, and no data has been lost.
+    </InfoNote>
+  )
+}
+
+/**
+ * Shown when a request reached something that is not the API.
+ *
+ * `th-labs.uz` serves a Next.js app at the root and the API only under `/v1`,
+ * so a panel whose base URL is off by a segment gets that app's **HTML 404**
+ * for every call. The tell is a 404 with no JSON envelope, and the fix is
+ * always deploy config, never the backend — so this names the URL it actually
+ * called rather than making you open the network tab to find out.
+ */
+export function WrongApiBaseNote({ url, base }: { url?: string; base: string }) {
+  return (
+    <InfoNote title="The panel is not talking to the API" tone="warn">
+      <span>
+        {url ? (
+          <>
+            <code>{url}</code> answered <code>404</code> with an HTML page rather than the API's
+            JSON.
+          </>
+        ) : (
+          <>
+            A request answered <code>404</code> with an HTML page rather than the API's JSON.
+          </>
+        )}{' '}
+        The route itself is fine — something that is not the API is serving this path, so every
+        screen here will fail the same way.
+      </span>
+      <span>
+        This panel resolves API calls against <code>{base}</code>. In production that has to be
+        rewritten to <code>https://th-labs.uz/v1</code> (the <code>/api/:path*</code> rewrite in{' '}
+        <code>vercel.json</code>), or <code>VITE_API_BASE_URL</code> set to{' '}
+        <code>https://th-labs.uz/v1</code> at build time. The API root itself is <code>/v1</code>;{' '}
+        <code>/api</code> on <code>th-labs.uz</code> belongs to the marketing app.
+      </span>
+    </InfoNote>
+  )
+}
+
+/**
+ * Shown when the API accepted the session but refused the role.
+ *
+ * Distinct from both notes above on purpose: nothing is misconfigured and
+ * nothing needs redeploying — this account simply may not read this.
+ */
+export function ForbiddenNote({ what, role }: { what: string; role?: string }) {
+  return (
+    <InfoNote title={`Your role cannot read the ${what}`} tone="warn">
+      The API accepted the session and then answered <code>403</code>.
+      {role ? (
+        <>
+          {' '}
+          This account signs in as <code>{role}</code>, which the API does not grant access to
+          these routes.
+        </>
+      ) : null}{' '}
+      Nothing is broken and nothing needs redeploying — the role is the gate.
+    </InfoNote>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Severity banner                                                             */
+/* -------------------------------------------------------------------------- */
+
+export type Severity = 'critical' | 'warn' | 'ok' | 'info'
+
+/**
+ * One line of billing health. `critical` is reserved for the failure that is
+ * invisible until a customer has already been charged.
+ */
+export function StatusRow({
+  severity,
+  title,
+  children,
+}: {
+  severity: Severity
+  title: string
+  children?: ReactNode
+}) {
+  return (
+    <div className={`status-row ${severity}`}>
+      <span className="status-dot" />
+      <div className="status-body">
+        <strong>{title}</strong>
+        {children && <span>{children}</span>}
+      </div>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Copyable value                                                              */
+/* -------------------------------------------------------------------------- */
+
+export function CopyValue({ value, empty = '—' }: { value?: string | null; empty?: string }) {
+  const [copied, setCopied] = useState(false)
+
+  if (!value) return <span className="text-faint">{empty}</span>
+
+  return (
+    <button
+      type="button"
+      className="copy-value"
+      title={`Copy ${value}`}
+      onClick={() => {
+        // Clipboard access can be refused (insecure origin, denied permission);
+        // the value is on screen either way, so a failure just isn't confirmed.
+        navigator.clipboard?.writeText(value).then(
+          () => {
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1200)
+          },
+          () => undefined,
+        )
+      }}
+    >
+      <span className="mono truncate">{value}</span>
+      {copied ? <IconCheck /> : <IconCopy />}
+    </button>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bar chart                                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface ChartPoint {
+  at: string
+  total: number
+  failed: number
+}
+
+/**
+ * The log `stats.series`, drawn as stacked bars: failures in red on top of
+ * successes. Pure CSS heights — the series is short enough that a charting
+ * dependency would cost more than it returns.
+ */
+export function BarChart({ series, height = 120 }: { series: ChartPoint[]; height?: number }) {
+  if (!series.length) {
+    return <div className="chart-empty">No events in this window.</div>
+  }
+
+  const max = Math.max(...series.map((p) => p.total), 1)
+
+  return (
+    <div className="chart" style={{ height }}>
+      {series.map((point) => {
+        const ok = Math.max(point.total - point.failed, 0)
+        return (
+          <div
+            className="chart-col"
+            key={point.at}
+            title={`${new Date(point.at).toLocaleString()} — ${point.total} events, ${point.failed} failed`}
+          >
+            <div className="chart-stack">
+              <div
+                className="chart-bar failed"
+                style={{ height: `${(point.failed / max) * 100}%` }}
+              />
+              <div className="chart-bar ok" style={{ height: `${(ok / max) * 100}%` }} />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

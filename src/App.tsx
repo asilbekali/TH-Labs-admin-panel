@@ -14,7 +14,9 @@ import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { UserDetail } from './pages/UserDetail'
 import { Users } from './pages/Users'
-import { WaitList } from './pages/WaitList'
+import { Community } from './pages/Community'
+import { Feedback } from './pages/Feedback'
+import { FeedbackInboxProvider } from './lib/feedbackInbox'
 
 /**
  * Blocks the app until the boot-time refresh has settled, so a signed-in user
@@ -37,7 +39,13 @@ function RequireAuth() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
-  return <Layout />
+  // Inside the auth gate so the untriaged poll only ever runs for a signed-in
+  // staff session — mounted above Layout, which renders the nav badge.
+  return (
+    <FeedbackInboxProvider>
+      <Layout />
+    </FeedbackInboxProvider>
+  )
 }
 
 export default function App() {
@@ -52,10 +60,12 @@ export default function App() {
               <Route path="users" element={<Users />} />
               <Route path="users/:id" element={<UserDetail />} />
               <Route path="admins" element={<Admins />} />
-              <Route path="wait-list" element={<WaitList />} />
+              <Route path="community" element={<Community />} />
+              <Route path="feedback" element={<Feedback />} />
               <Route path="billing" element={<Billing />} />
               <Route path="activity" element={<Activity />} />
             </Route>
+            <Route path="/wait-list" element={<Navigate to="/community" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <Analytics beforeSend={beforeSend} />

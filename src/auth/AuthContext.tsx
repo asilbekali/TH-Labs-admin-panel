@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -15,15 +14,7 @@ import {
   setAccessToken,
   setSessionLostHandler,
 } from '../lib/api'
-import { STAFF_ROLES, type AuthUser, type Role } from '../lib/types'
-import {
-  forgetDefaultAdmin,
-  hasDefaultAdminSession,
-  isDefaultAdmin,
-  makeDefaultAdminUser,
-  matchesDefaultAdmin,
-  rememberDefaultAdmin,
-} from './fallbackAdmin'
+import { isStaffRole, type AuthUser, type Role } from '../lib/types'
 
 interface AuthContextValue {
   user: AuthUser | null
@@ -31,16 +22,21 @@ interface AuthContextValue {
   ready: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  /** True for SUPERADMIN only — the role gate on role changes, admin CRUD and deletes. */
   isSuperAdmin: boolean
-  /** Signed in with the built-in default account — no real API session. */
-  isDefaultAdmin: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-/** Thrown on login when the credentials are valid but the role is not staff. */
+/**
+ * Thrown on login when the credentials are valid but the role is not staff.
+ *
+ * The API would happily issue this session — it is a real account — so the
+ * refusal is the panel's own, and it has to be explicit rather than a broken
+ * dashboard full of 403s.
+ */
 class NotStaffError extends Error {
-  constructor(role: Role) {
+  constructor(role: Role | string) {
     super(
       `This account has the ${role} role. The admin panel requires ADMIN or SUPERADMIN.`,
     )
@@ -48,11 +44,7 @@ class NotStaffError extends Error {
   }
 }
 
-function isStaff(role: unknown): role is Role {
-  return typeof role === 'string' && STAFF_ROLES.includes(role as Role)
-}
-
-/** /auth/me has no documented shape — the user may be wrapped in an envelope. */
+/** /auth/me is undocumented — the user may arrive wrapped in an envelope. */
 function extractUser(payload: unknown): AuthUser | null {
   if (!payload || typeof payload !== 'object') return null
   const record = payload as Record<string, unknown>
@@ -71,52 +63,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [ready, setReady] = useState(false)
 
-  // Read by the session-lost handler, which is registered once and would
-  // otherwise close over a stale `user`.
-  const onDefaultAdmin = useRef(false)
-
   const clearSession = useCallback(() => {
     setAccessToken(null)
     setUser(null)
-    onDefaultAdmin.current = false
-    forgetDefaultAdmin()
   }, [])
 
   // Let the API client tear down the session when a refresh finally fails.
   useEffect(() => {
-    setSessionLostHandler(() => {
-      // The built-in admin has no token, so every API call 401s. Tearing the
-      // session down on that would bounce it straight back to /login.
-      if (onDefaultAdmin.current) return
-      clearSession()
-    })
+    setSessionLostHandler(clearSession)
     return () => setSessionLostHandler(null)
   }, [clearSession])
 
-  // On boot, try to resume from the httpOnly refresh cookie. A 401 here just
-  // means "not signed in" — it is the expected path for a fresh visitor, and
+  // On boot, resume from the httpOnly refresh cookie. A 401 here just means
+  // "not signed in" — the expected path for a fresh visitor — and
   // refreshSession() resolves to null rather than throwing.
   //
-  // No "run once" ref guard here: under StrictMode the effect is invoked twice,
-  // and a ref guard would make the second pass bail out while the first pass
-  // had already been cancelled by its own cleanup — leaving `ready` false
-  // forever. refreshSession() de-duplicates in-flight calls, so letting both
-  // passes run shares a single request and only the live one commits state.
+  // No "run once" ref guard: under StrictMode the effect is invoked twice, and
+  // a ref guard would make the second pass bail out while the first had
+  // already been cancelled by its own cleanup, leaving `ready` false forever.
+  // refreshSession() de-duplicates in-flight calls, so letting both passes run
+  // shares a single request and only the live one commits state.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       const session = await refreshSession()
       if (cancelled) return
 
-      if (session && isStaff(session.user?.role)) {
+      if (session && isStaffRole(session.user?.role)) {
         setUser(session.user)
       } else if (session) {
-        // Signed in, but as a non-staff user — don't grant panel access.
+        // A valid session, but not a staff one — don't grant panel access.
         clearSession()
-      } else if (hasDefaultAdminSession()) {
-        // No backend session, but this tab signed in as the built-in admin.
-        onDefaultAdmin.current = true
-        setUser(makeDefaultAdminUser())
       }
       setReady(true)
     })()
@@ -127,25 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSession])
 
   const login = useCallback(async (email: string, password: string) => {
-    let res: Awaited<ReturnType<typeof endpoints.login>>
-    try {
-      res = await endpoints.login(email, password)
-    } catch (err) {
-      // The backend has no such admin (or is unreachable). Fall back to the
-      // built-in default account if that is what was typed; otherwise the
-      // original failure is the honest answer.
-      if (matchesDefaultAdmin(email, password)) {
-        setAccessToken(null)
-        onDefaultAdmin.current = true
-        rememberDefaultAdmin()
-        setUser(makeDefaultAdminUser())
-        return
-      }
-      throw err
-    }
+    const res = await endpoints.login(email, password)
 
-    onDefaultAdmin.current = false
-    forgetDefaultAdmin()
     setAccessToken(res.accessToken)
 
     // Prefer the login body, but fall back to /auth/me if it omitted the role.
@@ -158,7 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    if (!nextUser || !isStaff(nextUser.role)) {
+    if (!nextUser || !isStaffRole(nextUser.role)) {
+      // Drop the token rather than hold a session the panel refuses to use.
       setAccessToken(null)
       throw new NotStaffError((nextUser?.role as Role) ?? 'USER')
     }
@@ -167,12 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
-    // Nothing to revoke server-side for the built-in admin.
-    if (onDefaultAdmin.current) {
-      clearSession()
-      return
-    }
-
     try {
       await endpoints.logout()
     } catch (err) {
@@ -191,7 +146,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       isSuperAdmin: user?.role === 'SUPERADMIN',
-      isDefaultAdmin: isDefaultAdmin(user),
     }),
     [user, ready, login, logout],
   )

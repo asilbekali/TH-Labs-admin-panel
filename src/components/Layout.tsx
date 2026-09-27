@@ -1,28 +1,44 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { endpoints, isMissingRoute } from '../lib/api'
+import { useQuery } from '../lib/useApi'
+import { useFeedbackInbox } from '../lib/feedbackInbox'
 import { initialsOf } from '../lib/format'
+import { Badge } from './ui'
 import {
   IconActivity,
-  IconAlert,
   IconCard,
   IconDashboard,
   IconList,
   IconLogout,
   IconMenu,
+  IconMessage,
   IconMoon,
+  IconPulse,
   IconShield,
   IconSun,
   IconUsers,
 } from './icons'
 
-const NAV = [
+interface NavItem {
+  to: string
+  label: string
+  icon: (p: { className?: string }) => React.ReactElement
+  end?: boolean
+  superAdminOnly?: boolean
+  /** Renders the untriaged-feedback count beside the label. */
+  badge?: 'feedback'
+}
+
+const NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: IconDashboard, end: true },
   { to: '/users', label: 'Users', icon: IconUsers },
-  { to: '/admins', label: 'Admins', icon: IconShield, superAdminOnly: true },
-  { to: '/wait-list', label: 'Wait list', icon: IconList },
-  { to: '/billing', label: 'Billing & plans', icon: IconCard },
+  { to: '/feedback', label: 'Feedback', icon: IconMessage, badge: 'feedback' },
+  { to: '/community', label: 'Community', icon: IconList },
+  { to: '/billing', label: 'Billing', icon: IconCard },
   { to: '/activity', label: 'Activity log', icon: IconActivity },
+  { to: '/admins', label: 'Admin records', icon: IconShield, superAdminOnly: true },
 ]
 
 function useTheme() {
@@ -39,7 +55,7 @@ function useTheme() {
 }
 
 export function Layout() {
-  const { user, logout, isSuperAdmin, isDefaultAdmin } = useAuth()
+  const { user, logout, isSuperAdmin } = useAuth()
   const { theme, toggle } = useTheme()
   const location = useLocation()
   const [navOpen, setNavOpen] = useState(false)
@@ -65,7 +81,7 @@ export function Layout() {
 
         <nav className="nav">
           <div className="nav-label">Manage</div>
-          {items.map(({ to, label, icon: Icon, end }) => (
+          {items.map(({ to, label, icon: Icon, end, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -77,6 +93,7 @@ export function Layout() {
             >
               <Icon />
               {label}
+              {badge === 'feedback' && <UntriagedCount />}
             </NavLink>
           ))}
         </nav>
@@ -107,6 +124,8 @@ export function Layout() {
           </button>
           <h1>{current?.label ?? 'Admin'}</h1>
           <div className="topbar-actions">
+            <ModeBadge />
+            <HealthBadge />
             <button
               className="btn btn-icon"
               onClick={toggle}
@@ -119,20 +138,90 @@ export function Layout() {
         </header>
 
         <main className="page">
-          {isDefaultAdmin && (
-            <div className="alert warn" style={{ marginBottom: 16 }}>
-              <IconAlert />
-              <div className="alert-body">
-                <strong>Signed in with the default admin account.</strong> The backend
-                did not accept these credentials, so this is a local session only —
-                pages that read or write live data will fail until you sign in with a
-                real ADMIN or SUPERADMIN account.
-              </div>
-            </div>
-          )}
           <Outlet />
         </main>
       </div>
     </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Untriaged feedback                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The count of feedback nobody has looked at, on the nav item itself.
+ *
+ * This is the whole point of the inbox: a user writing in has to be something
+ * staff *notice*, not something they remember to go and check. So it sits in
+ * the sidebar on every screen, and reads the shared count so it can never
+ * disagree with the inbox it links to.
+ *
+ * Renders nothing at zero, and nothing while the count is unknown — a "0" badge
+ * is noise, and a badge invented from a failed request is a lie.
+ */
+function UntriagedCount() {
+  const { count } = useFeedbackInbox()
+
+  if (count == null || count <= 0) return null
+
+  return (
+    <span
+      className="nav-count"
+      title={`${count} feedback message${count === 1 ? '' : 's'} nobody has triaged yet`}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Topbar indicators                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Test mode must never be a surprise, so it is a persistent badge rather than
+ * something you only see on the billing screen. Silent when the overview is
+ * unavailable — a missing endpoint is not evidence of either mode.
+ */
+function ModeBadge() {
+  const overview = useQuery((signal) => endpoints.billingOverview(signal))
+  const mode = overview.data?.mode
+
+  if (!mode) return null
+
+  return (
+    <Badge tone={mode === 'live' ? 'green' : 'amber'}>
+      <span className="dot" />
+      {String(mode).toUpperCase()}
+    </Badge>
+  )
+}
+
+/** Public endpoint — a cheap at-a-glance read on the API and the pipeline. */
+function HealthBadge() {
+  const health = useQuery((signal) => endpoints.health(signal))
+
+  if (health.initialLoading || isMissingRoute(health.error)) return null
+
+  if (health.error) {
+    return (
+      <Badge tone="red">
+        <IconPulse />
+        API unreachable
+      </Badge>
+    )
+  }
+
+  const data = health.data
+  const tone = data?.mode === 'ok' ? 'green' : data?.database === 'up' ? 'amber' : 'red'
+
+  return (
+    <Badge tone={tone} >
+      <IconPulse />
+      <span title={`database ${data?.database} · pipeline ${data?.pipeline}`}>
+        {data?.mode ?? 'unknown'}
+      </span>
+    </Badge>
   )
 }

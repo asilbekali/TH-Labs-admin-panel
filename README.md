@@ -1,8 +1,12 @@
 # TH-Labs Studio — Admin Panel
 
-An admin console for the [TH-LABS API](https://th-labs.uz/docs). Manage user
-accounts and their data, staff accounts, the early-access wait list, the plan
-catalogue, and review platform activity.
+An admin console for the [TH-LABS account API](https://th-labs.uz/docs). Manage
+plans and credit packs and the Dodo Payments wiring behind them, users and their
+roles, community signups, and the activity log of who did what.
+
+**The panel never writes to the backend's shape.** It calls only documented
+`/v1` endpoints, holds no secret beyond the API base URL, and every number on
+screen comes from the API — no plan price, credit count or tariff is hardcoded.
 
 Built with React 19 + TypeScript + Vite. React Router is the only runtime
 dependency beyond React itself.
@@ -14,13 +18,30 @@ npm install
 npm run dev      # http://localhost:5173
 ```
 
+### Point it at the right API first
+
+By default the dev proxy forwards `/api` to **`https://th-labs.uz`**, whose API
+is served **only under `/v1`**. Everything else on that host is the marketing
+app, which answers any unknown path with an **HTML 404 page**. That matters more
+than it sounds: see "A 404 is not one thing" below.
+
+To work against the local account API (`cd api && yarn start:dev`, port 3001),
+create `.env.local`:
+
+```bash
+echo 'VITE_API_ORIGIN=http://localhost:3001' > .env.local
+```
+
+`.env.local` is gitignored. Restart `npm run dev` after changing it — Vite reads
+env at startup.
+
 Sign in with an **ADMIN** or **SUPERADMIN** account. A `USER` account is
 rejected at the login screen — it would only collect `403`s once inside.
 
 ```bash
 npm run build    # typecheck + production bundle into dist/
 npm run lint     # oxlint
-npm test         # vitest — boot-sequence regression tests
+npm test         # vitest — boot sequence, login gate, and screen rendering
 ```
 
 ## Deploying to Vercel
@@ -37,10 +58,43 @@ Vercel's static host and comes back `404 NOT_FOUND`, so **every sign-in fails**.
 The second is the SPA fallback — without it `/login` and every other deep link
 404s on reload.
 
+Check the first rewrite is actually live after a deploy. `curl -i
+https://<panel-host>/api/health` must return the API's JSON; if it returns HTML,
+the rewrite is not in effect and every screen will report
+"The panel is not talking to the API".
+
 Leave `VITE_API_BASE_URL` **unset** in the Vercel project. Setting it to
 `https://th-labs.uz/v1` makes the browser call the API directly, and the API
 only sends CORS headers for `th-labs.uz`, so the calls are blocked. Routing
 through the rewrite keeps them same-origin.
+
+### A 404 is not one thing
+
+Two completely different faults both surface as a `404`, and the panel must not
+confuse them — it used to, and the wrong one sends you off to redeploy a backend
+that was answering perfectly well.
+
+| What you see | What it means | The fix |
+| --- | --- | --- |
+| A **JSON** `404` (`{"statusCode":404,...}`) | The route genuinely is not in this API build | Redeploy the API |
+| An **HTML** `404` page | The request never reached the API at all | Deploy config — the `/api` rewrite, or `VITE_API_BASE_URL` |
+
+`isMissingRoute()` in `src/lib/api.ts` is true only for the first;
+`isWrongApiBase()` is the second, and `ApiError` carries `url` and `fromApi` so
+the note can name the URL it actually called. Two tests in
+`src/pages/screens.test.tsx` pin both directions.
+
+The quickest way to tell by hand:
+
+```bash
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' \
+  https://th-labs.uz/v1/admin/logs/actions   # 401 application/json  — route exists
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' \
+  https://th-labs.uz/api/admin/logs/actions  # 404 text/html         — wrong base
+```
+
+A `401` there is good news: guards only run once a route has matched, so an
+unauthenticated `401` proves the route is deployed.
 
 ### Web Analytics
 
@@ -119,64 +173,163 @@ in-flight calls, which makes the guard unnecessary anyway.
 `src/auth/AuthContext.test.tsx` renders the real app inside `StrictMode` and
 covers this — those tests fail if the guard is reintroduced.
 
-### Built-in default admin
-
-If the backend has no admin to sign in with — it rejects the credentials, or it
-is unreachable — signing in as **`super@gmail.com` / `iamadmin`** drops into the
-panel as a local `SUPERADMIN`. It exists so the panel can be opened and
-navigated before a real admin account exists.
-
-It is a **client-side session only**: there is no access token behind it, so
-every call to the real API still fails, and pages that read or write live data
-come back empty. A banner at the top of every page says so. A `401` on those
-calls deliberately does *not* tear the session down, since it would otherwise
-bounce straight back to `/login`.
-
-A real backend admin always wins — the fallback is only reached after
-`POST /auth/login` has already failed, so nothing shadows a live account.
-
-Anyone who can load the bundle can read these credentials. Set
-`VITE_ENABLE_DEFAULT_ADMIN=false` on a deployment pointed at a real backend;
-`VITE_DEFAULT_ADMIN_EMAIL` / `VITE_DEFAULT_ADMIN_PASSWORD` override the pair.
-See `src/auth/fallbackAdmin.ts`.
-
 ## Pages
 
 | Page | Endpoints | Notes |
 | --- | --- | --- |
-| Dashboard | users, wait list, plans, admins | Totals, newest users, recent activity |
-| Users | `GET/PATCH/DELETE /v1/users/*` | Search, role filter, sort, pagination, create/edit/delete |
-| User detail | `GET /v1/users/{id}` | Full record incl. registration dates |
-| Admins | `/v1/admin` CRUD | SUPERADMIN only; self-deletion is blocked |
-| Wait list | `/v1/wait-list` | List, search, delete, CSV export |
-| Billing & plans | `/v1/payments/*` | Plan catalogue + your own billing state |
-| Activity log | derived | See the caveat below |
+| Dashboard | `admin/billing/overview`, `admin/logs*`, `/v1/feedback`, users, community | Billing health first, then a 24h chart, latest feedback and recent activity |
+| Billing | `/v1/admin/billing/*` | Status panel, plans (inline edit), credit pack CRUD |
+| Activity log | `/v1/admin/logs*` | Feed, filters, row detail, live updates |
+| Users | `/v1/users/*` | Search, filter, sort, edit, delete; role change (SUPERADMIN) |
+| User detail | `GET /v1/users/{id}` | Full record, rendered generically |
+| Feedback | `/v1/feedback*` | Inbox with status/kind/search filters, triage, staff notes; delete (SUPERADMIN) |
+| Community | `/v1/community` | List, search, edit, CSV export; delete (SUPERADMIN) |
+| Admin records | `/v1/admin` CRUD | SUPERADMIN only — a separate table, see below |
 
-Filtering, sorting and pagination are client-side: the user and wait list
-endpoints return their full collections in one unpaginated payload.
+Filtering, sorting and pagination on **Users** and **Community** are
+client-side: those endpoints return their full collections in one unpaginated
+payload, with no search parameter. The **Activity log** and **Feedback** page on
+the server — both take `page`/`limit` and cap `limit` at 200.
 
-## Two API gaps worth knowing about
+`/v1/price-token` is deliberately **not** on that list. The controller is still
+a NestJS scaffold on the deployed API — the list route answers with the literal
+string `"This action returns all priceToken"` and both DTOs declare no
+properties — so there is no contract to build against yet. `endpoints.priceTokens`
+exists in the client; a screen would only be a form that posts an empty body.
 
-These are limits of the backend, not of the UI. Both are surfaced in-app rather
-than hidden.
+### Role gating
 
-**1. There is no audit-log endpoint.** Nothing in the API records who did what.
-The Activity page therefore reconstructs a timeline from the `createdAt`
-timestamps that *are* exposed — user registrations, admin account creations and
-wait list joins. That means it shows **records being created, not actions
-administrators took**: deletions, edits and logins leave no trace. When the
-backend gains a real log endpoint, add it as another source in
-`src/lib/activity.ts` returning `ActivityEvent[]`; the page needs no changes.
+The API's guard treats `SUPERADMIN` as satisfying every role, so the panel never
+checks `role === 'ADMIN'` — staff is always "ADMIN or SUPERADMIN"
+(`isStaffRole()` in `src/lib/types.ts`). These are SUPERADMIN-only and are
+hidden from an ADMIN, *and* still handled if the server refuses — the server is
+the authority:
 
-**2. Billing is self-scoped.** `/v1/payments/subscription`, `/credits` and
-`/history` all read the *authenticated caller's* record. There is no admin route
-to read another user's subscription or credit ledger, so per-user billing cannot
-appear on the user detail page until one exists.
+- changing a user's role
+- creating, editing or deleting admin records
+- deleting a credit pack
+- deleting a community entry
 
-Two smaller notes: `UpdateWaitListDto` has no properties, so wait list entries
-are effectively read-only apart from deletion; and `POST /v1/users/create-user`
-is the public registration route, so new users are always created with the
-`USER` role — use the Admins page to create staff.
+### `/v1/admin` is not who can sign in
+
+The `Admin` table is **separate from `User`**. Panel sign-in and every role
+check run off `User.role`; a row in `Admin` grants nobody access and deleting
+one locks nobody out. The page says so in a banner, because the endpoint name
+invites exactly the opposite assumption.
+
+## What the API does and does not offer
+
+**Feedback has to be noticed, not checked.** Anyone can `POST /v1/feedback`;
+reading and triaging is ADMIN or SUPERADMIN, and deleting is SUPERADMIN only.
+A message in `NEW` is one nobody has looked at, so that count — and only that
+count — is what the sidebar badge shows. Three rules make it trustworthy:
+
+- It comes from the server's own `total` for `status=NEW&limit=1`, never from
+  counting rows on a page. Counting rows would silently cap the badge at the
+  page size and under-report exactly when the inbox is busiest.
+- Opening a message changes nothing. Triage is a person picking a status, so the
+  count cannot drift to meaning "nobody has clicked it".
+- One shared count (`FeedbackInboxProvider` in `src/lib/feedbackInbox.tsx`)
+  feeds the badge, the dashboard tile and the inbox, and a triage refreshes it
+  immediately. A badge that disagrees with the inbox it links to is worse than
+  no badge.
+
+It polls every 60s and re-reads on tab focus. On a 403 or 404 the count stays
+**unknown** and nothing renders — never a confident `0`.
+
+The server overwrites `name` and `email` from the bearer token for a signed-in
+sender, so those are verified only when `userId` is set. The panel says which,
+rather than presenting a self-reported address as if the API vouched for it.
+
+**The activity log is real and append-only.** `/v1/admin/logs` records who did
+what to whom. Nothing can edit or delete a row, and reading the log is not
+itself logged — the UI does not imply otherwise.
+
+`action` filters by **prefix**, so `action=billing` matches every `billing.*`.
+The `q` box searches the summary, path, action and *both* the actor and target
+emails, so one search answers "everything about this person" in both
+directions.
+
+`stats` returns `truncated`. When it is true the panel says "showing the first
+N events" rather than letting the chart imply it covers the whole window.
+
+**Live updates use fetch, not `EventSource`.** `EventSource` cannot set an
+`Authorization` header, and the token must not go in the query string, so
+`streamLogs()` in `src/lib/api.ts` reads `/admin/logs/stream` with `fetch` and
+parses the SSE framing itself. If the stream cannot be established — including
+on an API build that has no such route — it falls back to polling every 5s and
+the badge next to the "Live" toggle says which is in use.
+
+**Billing endpoints for a single user are self-scoped.** `/v1/payments/
+subscription`, `/credits` and `/history` read the *authenticated caller's*
+record. There is no admin route to read another user's ledger, so per-user
+billing cannot appear on the user detail page.
+
+**Read-only, deliberately not built:** `/v1/languages` has no write endpoints,
+and `/v1/price-token` is an unimplemented scaffold that returns placeholder
+strings — credit pricing lives in `/admin/billing/credit-packs`. Neither has an
+editor here.
+
+**Plan cycles come from the API, never from the panel.** The plans table renders
+whatever `plan.cycle` says. Nothing here hardcodes a set of cycles, and the plan
+editor cannot change one — `UpdatePlanDto` has no `cycle` field, so a cycle only
+ever exists because a row in the plans table says so.
+
+> **Known mismatch: weekly is not a product we sell.**
+> As of 2026-09-27 the plans table still holds two **active** weekly rows, and
+> `GET /v1/payments/plans` is the *public* catalogue of active plans — so they
+> are advertised to anyone who calls it:
+>
+> | Plan | Price | Id |
+> | --- | --- | --- |
+> | `PRO/WEEKLY` | $6.00 | `cmsexr7s30001lz3cj6mmqxg8` |
+> | `STUDIO/WEEKLY` | $15.00 | `cmsexr7s80004lz3ccnnpn0o5` |
+>
+> This is data, not code: retire them with `active: false` (Billing → edit the
+> plan → untick Active → Save). Prefer that to a delete — it takes them off the
+> public catalogue while leaving any existing subscription's history intact.
+> Re-run the check below afterwards; weekly should be gone from the output.
+
+```bash
+curl -s https://th-labs.uz/v1/payments/plans \
+  | python3 -c 'import json,sys; [print(p["tier"], p["cycle"], p["priceCents"]) for p in json.load(sys.stdin)["plans"]]'
+```
+
+`POST /v1/users/create-user` is the public registration route, so new users are
+always created with the `USER` role. Promote them from the Users page.
+
+## The server has caught up
+
+`https://th-labs.uz/v1` now serves the full contract this panel is written
+against — 65 paths, including `admin-logs`, `admin-billing` and `feedback`.
+Verified 2026-09-27 against <https://th-labs.uz/docs-json>.
+
+There is nothing to switch and no code change to make. An unauthenticated probe
+is the quickest confirmation, because guards only run once a route has matched:
+
+```bash
+curl -s https://th-labs.uz/v1/admin/logs/actions   # {"message":"Unauthorized","statusCode":401}
+curl -s https://th-labs.uz/v1/feedback             # {"message":"Unauthorized","statusCode":401}
+```
+
+A `401` there means the route is deployed. A **JSON** `404` would mean it is not.
+An **HTML** `404` means the request never reached the API — see "A 404 is not one
+thing".
+
+So if a screen still reports "this API build has no … endpoints" against
+`th-labs.uz`, the base URL is the thing to check first, not the backend.
+
+The one thing worth checking on the billing status panel: when
+`webhookConfigured` is **false** a customer can pay and receive nothing. Set
+`DODO_WEBHOOK_SECRET` on the API before taking payments. The panel shows that in
+red at the top of Billing and the Dashboard.
+
+Detection note: the panel probes for a missing feature with a **two-segment**
+route (`/admin/logs/actions`, `/admin/logs/stats`), never the bare
+`/admin/logs`. On a build whose sub-controllers register after `AdminController`,
+`/admin/logs` collides with `GET /admin/{id}` and answers `401` unauthenticated
+or **`500`** signed in — neither is a `404`, so only a sibling route can tell you
+the feature is absent.
 
 ## Defensive rendering
 
@@ -184,11 +337,10 @@ Most response bodies are undocumented in the OpenAPI spec (`200 description: ''`
 Where the shape isn't guaranteed, the UI renders whatever comes back instead of
 assuming a fixed set of columns:
 
-- `unwrapList()` accepts either a bare array or an envelope like `{ users: [...] }`.
+- `unwrapList()` accepts either a bare array or an envelope like `{ rows: [...] }`.
 - The user detail page renders every returned field generically, so extra fields
   show up rather than being silently dropped. Credential-looking keys
   (`password`, `passwordHash`, `salt`, `refreshToken`) are filtered out.
-- The billing ledger tables derive their columns from the rows themselves.
 
 If the API later returns richer user records, they surface automatically.
 
@@ -196,9 +348,11 @@ If the API later returns richer user records, they surface automatically.
 
 ```
 src/
-  lib/       api client, types, data hooks, formatters, activity derivation
+  lib/       api client (+ SSE reader), types, data hooks, formatters,
+             feedbackInbox (shared untriaged count)
   auth/      AuthContext — session, boot refresh, role gating
   components/ Layout, Modal, Toast, shared UI primitives, icons
-  pages/     Login, Dashboard, Users, UserDetail, Admins, WaitList, Billing, Activity
+  pages/     Login, Dashboard, Billing, Activity, Feedback, Users, UserDetail,
+             Community, Admins
   index.css  design tokens + all component styles (dark/light)
 ```

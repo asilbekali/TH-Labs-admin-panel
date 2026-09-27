@@ -211,14 +211,29 @@ h4 {
   flex-shrink: 0;
 }
 
+/*
+ * The untriaged-feedback count on its nav item.
+ *
+ * Deliberately the loudest thing in the sidebar: it only renders when somebody
+ * is actually waiting on a reply, so it can afford to be. A quiet grey pill
+ * here would be read as decoration and defeat the point of having it.
+ */
 .nav-count {
   margin-left: auto;
+  min-width: 18px;
   padding: 1px 6px;
   border-radius: 20px;
-  background: var(--surface-hover);
-  color: var(--text-faint);
+  background: var(--accent);
+  color: #fff;
   font-size: 11px;
+  font-weight: 700;
+  text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.nav-item.active .nav-count {
+  background: var(--accent);
+  color: #fff;
 }
 
 .sidebar-footer {
@@ -1257,4 +1272,546 @@ td.actions {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ========================================================================== */
+/* Billing status                                                             */
+/* ========================================================================== */
+
+/* The webhook failure is the only one that stays invisible until a customer
+   has already been charged, so it gets a treatment nothing else on the page
+   competes with. */
+.alert.critical {
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  color: var(--text);
+}
+.alert.critical strong {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.status-head h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.status-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.status-row + .status-row {
+  border-top: 1px solid var(--border);
+}
+.status-row .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex: none;
+  background: var(--text-faint);
+}
+.status-row.ok .status-dot {
+  background: var(--success);
+}
+.status-row.warn .status-dot {
+  background: var(--warning);
+}
+.status-row.critical .status-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+.status-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.status-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.status-row.critical .status-body strong {
+  color: var(--danger);
+}
+.status-body span {
+  color: var(--text-muted);
+}
+
+.status-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.fact-key {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-bottom: 3px;
+}
+.fact-val {
+  font-size: 13.5px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ========================================================================== */
+/* Inline editor (plans)                                                      */
+/* ========================================================================== */
+
+tr.row-editing > td {
+  background: var(--surface-hover);
+}
+tr.row-editor > td {
+  background: var(--bg-elevated);
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.inline-editor {
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.inline-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0 14px;
+}
+.inline-editor-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0 14px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.check input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+.check-row {
+  display: flex;
+  gap: 18px;
+  padding: 4px 0 8px;
+}
+
+.badge-stack {
+  display: inline-flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.plan-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  margin-left: -4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.copy-value:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.copy-value svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  opacity: 0.6;
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirm-target {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 14px;
+}
+
+/* ========================================================================== */
+/* Activity log                                                               */
+/* ========================================================================== */
+
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chip svg {
+  width: 13px;
+  height: 13px;
+}
+.chip-input {
+  width: auto;
+  max-width: 220px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+.chip-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+.chip-date .input {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+
+.new-events {
+  display: block;
+  width: 100%;
+  padding: 9px;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.feed-item.log {
+  display: block;
+  padding: 0;
+}
+.log-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: 11px 14px;
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.log-main:hover {
+  background: var(--surface-hover);
+}
+.log-marker {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  margin-top: 6px;
+  flex: none;
+}
+.log-marker.failed {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+.log-actor {
+  color: var(--text);
+  font-weight: 600;
+}
+.log-dash {
+  color: var(--text-faint);
+}
+.feed-item.log .feed-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.feed-item.log .feed-meta code {
+  font-size: 11.5px;
+}
+.log-caret {
+  display: flex;
+  color: var(--text-faint);
+  transition: transform 0.15s ease;
+}
+.log-caret svg {
+  width: 15px;
+  height: 15px;
+  transform: rotate(90deg);
+}
+.log-caret.open svg {
+  transform: rotate(-90deg);
+}
+
+.log-detail {
+  padding: 4px 14px 16px 32px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.log-detail-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 14px 0 6px;
+}
+.detail-val {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.code-block {
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  overflow-x: auto;
+  max-height: 340px;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ========================================================================== */
+/* Chart                                                                      */
+/* ========================================================================== */
+
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 100%;
+}
+.chart-col {
+  flex: 1;
+  height: 100%;
+  min-width: 2px;
+  display: flex;
+  align-items: flex-end;
+}
+.chart-stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px 2px 0 0;
+  overflow: hidden;
+}
+.chart-bar.ok {
+  background: var(--accent);
+}
+.chart-bar.failed {
+  background: var(--danger);
+}
+.chart-col:hover .chart-bar.ok {
+  background: var(--accent-hover);
+}
+.chart-empty {
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 28px 0;
+  text-align: center;
+}
+.chart-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.chart-foot .spacer {
+  flex: 1;
+}
+.swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 5px;
+}
+.swatch.ok {
+  background: var(--accent);
+}
+.swatch.failed {
+  background: var(--danger);
+}
+
+/* ========================================================================== */
+/* Text tones                                                                 */
+/* ========================================================================== */
+
+.text-muted {
+  color: var(--text-muted);
+}
+.text-faint {
+  color: var(--text-faint);
+}
+.text-warn {
+  color: var(--warning);
+}
+
+@media (max-width: 720px) {
+  .status-facts {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+  .chip-input {
+    max-width: 100%;
+    flex: 1;
+  }
+  .log-detail {
+    padding-left: 14px;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Feedback inbox                                                              */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * An untriaged message. Same visual grammar as a failed log row — a marked
+ * left edge and a heavier title — because it means the same thing to the
+ * reader: this row is the reason you opened the screen.
+ */
+.feed-item.log.unread {
+  background: var(--accent-soft);
+}
+
+.feed-item.log.unread .feed-title {
+  font-weight: 600;
+}
+
+.log-marker.new {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rating svg {
+  width: 12px;
+  height: 12px;
+}
+
+/*
+ * The message body. `pre-wrap` keeps the sender's own line breaks — a bug
+ * report with steps on separate lines is much harder to read reflowed into a
+ * paragraph — while still wrapping long lines. `break-word` stops a pasted URL
+ * from widening the whole row.
+ */
+.feedback-message {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.inline-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
 }

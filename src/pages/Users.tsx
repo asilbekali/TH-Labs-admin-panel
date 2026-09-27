@@ -2,9 +2,10 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { endpoints } from '../lib/api'
 import { useMutation, useQuery } from '../lib/useApi'
-import { formatDateTime, initialsOf, relativeTime } from '../lib/format'
+import { formatDateTime, formatNumber, initialsOf, relativeTime } from '../lib/format'
 import type { ApiUser, CreateUserInput, Role, UpdateUserInput } from '../lib/types'
 import { ROLES } from '../lib/types'
+import { useAuth } from '../auth/AuthContext'
 import { ConfirmDialog, Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import {
@@ -15,13 +16,22 @@ import {
   RoleBadge,
   TableSkeleton,
 } from '../components/ui'
-import { IconEdit, IconEye, IconRefresh, IconSearch, IconTrash, IconUserPlus } from '../components/icons'
+import {
+  IconEdit,
+  IconEye,
+  IconRefresh,
+  IconSearch,
+  IconShield,
+  IconTrash,
+  IconUserPlus,
+} from '../components/icons'
 
 type SortKey = 'name' | 'email' | 'role' | 'createdAt' | 'id'
 type SortDir = 'asc' | 'desc'
 
 export function Users() {
   const { toast, toastError } = useToast()
+  const { isSuperAdmin, user: me } = useAuth()
   const users = useQuery((signal) => endpoints.users(signal))
 
   const [search, setSearch] = useState('')
@@ -34,6 +44,7 @@ export function Users() {
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<ApiUser | null>(null)
   const [deleting, setDeleting] = useState<ApiUser | null>(null)
+  const [changingRole, setChangingRole] = useState<ApiUser | null>(null)
 
   const removeUser = useMutation((id: number | string) => endpoints.deleteUser(id))
 
@@ -103,8 +114,9 @@ export function Users() {
   return (
     <>
       <p className="page-intro">
-        Every registered account, from <code>GET /v1/users/all-users-data</code>. Search, filter by
-        role, open a user to see their full record, or edit and remove accounts.
+        Every registered account, from <code>GET /v1/users/all-users-data</code>. That endpoint has
+        no pagination or search — it returns every user in one payload — so searching, sorting and
+        paging below all happen in the browser.
       </p>
 
       <div className="toolbar">
@@ -154,7 +166,7 @@ export function Users() {
       {users.error && <ErrorState error={users.error} onRetry={users.refetch} />}
 
       {users.initialLoading ? (
-        <TableSkeleton rows={8} cols={5} />
+        <TableSkeleton rows={8} cols={6} />
       ) : (
         !users.error && (
           <div className="table-wrap">
@@ -164,6 +176,7 @@ export function Users() {
                   {sortHead('name', 'User')}
                   {sortHead('id', 'ID')}
                   {sortHead('role', 'Role')}
+                  <th>Credits</th>
                   {sortHead('createdAt', 'Joined')}
                   <th />
                 </tr>
@@ -184,6 +197,15 @@ export function Users() {
                     <td>
                       <RoleBadge role={u.role} />
                     </td>
+                    <td className="nowrap">
+                      {formatNumber(u.credits)}
+                      {u.freeDubUsed === false && (
+                        <span className="text-faint" title="Has not used their one free dub">
+                          {' '}
+                          +free
+                        </span>
+                      )}
+                    </td>
                     <td className="nowrap" title={formatDateTime(u.createdAt)}>
                       {relativeTime(u.createdAt)}
                     </td>
@@ -198,6 +220,15 @@ export function Users() {
                       >
                         <IconEdit />
                       </button>
+                      {isSuperAdmin && (
+                        <button
+                          className="btn btn-icon"
+                          onClick={() => setChangingRole(u)}
+                          title="Change role (SUPERADMIN)"
+                        >
+                          <IconShield />
+                        </button>
+                      )}
                       <button
                         className="btn btn-icon danger"
                         onClick={() => setDeleting(u)}
@@ -255,6 +286,18 @@ export function Users() {
           onClose={() => setEditing(null)}
           onDone={() => {
             setEditing(null)
+            users.refetch()
+          }}
+        />
+      )}
+
+      {changingRole && (
+        <ChangeRoleModal
+          user={changingRole}
+          isSelf={me?.id === changingRole.id}
+          onClose={() => setChangingRole(null)}
+          onDone={() => {
+            setChangingRole(null)
             users.refetch()
           }}
         />
@@ -463,6 +506,124 @@ export function EditUserModal({
             placeholder="••••••••"
           />
         </Field>
+      </form>
+    </Modal>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Role change — SUPERADMIN only                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * PATCH /v1/users/:id/role.
+ *
+ * The role is what the whole panel gates on, so the dialog names the exact
+ * account and spells out the transition rather than relying on the operator
+ * remembering which row they clicked.
+ */
+function ChangeRoleModal({
+  user,
+  isSelf,
+  onClose,
+  onDone,
+}: {
+  user: ApiUser
+  isSelf: boolean
+  onClose: () => void
+  onDone: () => void
+}) {
+  const { toast, toastError } = useToast()
+  const [role, setRole] = useState<Role>(user.role)
+
+  const change = useMutation((next: Role) => endpoints.changeUserRole(user.id, next))
+  const unchanged = role === user.role
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (unchanged) {
+      onClose()
+      return
+    }
+    try {
+      await change.mutate(role)
+      toast(`${user.email} is now ${role}`)
+      onDone()
+    } catch (err) {
+      toastError(err, 'Could not change the role')
+    }
+  }
+
+  return (
+    <Modal
+      title="Change this user's role"
+      subtitle="SUPERADMIN only. The API is the authority — it will refuse if your role is not sufficient."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose} disabled={change.pending}>
+            Cancel
+          </button>
+          <button
+            className="btn btn-danger"
+            form="change-role-form"
+            type="submit"
+            disabled={change.pending || unchanged}
+          >
+            {change.pending && <span className="spinner" />}
+            Change role
+          </button>
+        </>
+      }
+    >
+      <form id="change-role-form" onSubmit={onSubmit}>
+        <div className="confirm-target">
+          <div className="avatar">{initialsOf(user.name, user.email)}</div>
+          <div>
+            <div className="cell-user-name">{user.name || '—'}</div>
+            <div className="cell-user-email">{user.email}</div>
+          </div>
+          <div className="spacer" />
+          <RoleBadge role={user.role} />
+        </div>
+
+        <Field label="New role">
+          <select
+            className="select"
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+          >
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {!unchanged && (
+          <div className="alert warn">
+            <div className="alert-body">
+              <strong>
+                {user.email} will change from {user.role} to {role}.
+              </strong>
+              {role === 'SUPERADMIN' && (
+                <span>
+                  SUPERADMIN satisfies every role check on the API — this account will be able to
+                  change roles, delete users and delete credit packs.
+                </span>
+              )}
+              {role === 'USER' && (
+                <span>This account will lose access to the admin panel entirely.</span>
+              )}
+              {isSelf && (
+                <span>
+                  This is your own account. Demoting yourself will sign you out of the panel.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </form>
     </Modal>
   )

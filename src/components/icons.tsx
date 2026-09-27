@@ -176,3 +176,61 @@ export const IconCoin = (p: Props) => (
     <path d="M14.5 9.5A2.5 2.5 0 0 0 12 8h-.5a2 2 0 0 0 0 4h1a2 2 0 0 1 0 4H12a2.5 2.5 0 0 1-2.5-1.5M12 6.5v11" />
   </svg>
 )
+
+export const IconChevron = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+)
+
+export const IconCopy = (p: Props) => (
+  <svg {...base} {...p}>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+)
+
+export const IconExternal = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M15 3h6v6M10 14 21 3" />
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+  </svg>
+)
+
+export const IconPulse = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+  </svg>
+)
+
+export const IconX = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+)
+
+export const IconGlobe = (p: Props) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18" />
+  </svg>
+)
+
+export const IconMessage = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" />
+  </svg>
+)
+
+export const IconStar = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.15 1 5.85L12 16.9l-5.25 2.8 1-5.85L3.5 9.7l5.9-.9z" />
+  </svg>
+)
+
+export const IconBug = (p: Props) => (
+  <svg {...base} {...p}>
+    <rect x="8" y="6" width="8" height="14" rx="4" />
+    <path d="M8 11H4m16 0h-4M8 16H4.5m15.5 0H16M9.5 6.5 8 4m6.5 2.5L16 4" />
+  </svg>
+)

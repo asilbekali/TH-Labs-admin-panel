@@ -1,6 +1,6 @@
 import { formatNumber } from '../lib/format'
 import type { BillingOverview } from '../lib/types'
-import { Badge, ErrorState, StatusRow } from './ui'
+import { Badge, CopyValue, ErrorState, StatusRow } from './ui'
 import { IconRefresh } from './icons'
 
 /* -------------------------------------------------------------------------- */
@@ -29,20 +29,21 @@ export function BillingStatus({
   const planIssues = data.plans?.unconfigured ?? []
   const packIssues = data.creditPacks?.unconfigured ?? []
 
+  const ready = data.canGrantCredits && !planIssues.length && !packIssues.length
+
   return (
     <div className="section">
       {/*
-        The webhook is the only failure that stays invisible until a customer
-        has already paid, so it gets the loudest treatment on the page and sits
-        above everything else.
+        Without the Lemon Squeezy API key the API cannot ask LS whether an order
+        was paid, so nothing can ever be credited. It gets the loudest treatment
+        on the page and sits above everything else.
       */}
-      {!data.webhookConfigured && (
+      {!data.canGrantCredits && (
         <div className="alert critical" style={{ marginBottom: 14 }}>
           <div className="alert-body">
-            <strong>Payments are accepted but no credits will be granted.</strong>
-            Webhooks are the only thing that grants credits. Until{' '}
-            <code>DODO_WEBHOOK_SECRET</code> is set on the API, a customer can pay and receive
-            nothing — and the checkout itself will look like it worked.
+            <strong>Purchases cannot grant credits.</strong>
+            Until <code>LEMONSQUEEZY_API_KEY</code> is set on the API there is no way to verify
+            that an order was paid, so the site keeps every Buy button disabled.
           </div>
         </div>
       )}
@@ -51,11 +52,7 @@ export function BillingStatus({
         <div className="status-head">
           <h2>Billing health</h2>
           <div className="spacer" />
-          <Badge tone={data.mode === 'live' ? 'green' : 'amber'}>
-            <span className="dot" />
-            {String(data.mode).toUpperCase()} MODE
-          </Badge>
-          <Badge>{data.provider}</Badge>
+          <Badge>{data.provider === 'lemonsqueezy' ? 'Lemon Squeezy' : data.provider}</Badge>
           <button className="btn btn-sm" onClick={onRetry}>
             <IconRefresh />
             Refresh
@@ -64,39 +61,26 @@ export function BillingStatus({
 
         <div className="status-list">
           <StatusRow
-            severity={data.webhookConfigured ? 'ok' : 'critical'}
-            title={data.webhookConfigured ? 'Webhook configured' : 'Webhook NOT configured'}
+            severity={data.canGrantCredits ? 'ok' : 'critical'}
+            title={
+              data.canGrantCredits
+                ? 'Lemon Squeezy API key configured'
+                : 'Lemon Squeezy API key NOT configured'
+            }
           >
-            {data.webhookConfigured
-              ? 'Paid invoices will grant credits.'
-              : 'Set DODO_WEBHOOK_SECRET on the API.'}
+            {data.canGrantCredits
+              ? 'Paid orders are verified with Lemon Squeezy and credited.'
+              : 'Set LEMONSQUEEZY_API_KEY on the API.'}
           </StatusRow>
 
-          <StatusRow
-            severity={data.apiConfigured ? 'ok' : 'warn'}
-            title={data.apiConfigured ? 'Dodo API key configured' : 'No Dodo API key'}
-          >
-            {data.apiConfigured
-              ? 'Hosted checkout, cancellation and the customer portal are available.'
-              : 'Static payment links only — cancel and the customer portal are switched off.'}
+          <StatusRow severity="ok" title="No webhook needed">
+            {data.webhook?.note ??
+              'Purchases are found by polling the Lemon Squeezy API for the account’s orders.'}
           </StatusRow>
-
-          {data.mode === 'test' && (
-            <StatusRow severity="warn" title="Test mode">
-              No real money moves. Checkout uses Dodo's test environment.
-            </StatusRow>
-          )}
-
-          {data.links?.mixed && (
-            <StatusRow severity="warn" title="Live mode is pointed at test checkout links">
-              {data.links.live} live and {data.links.test} test links are configured at once.
-              Customers sent to a test link cannot actually pay.
-            </StatusRow>
-          )}
 
           {planIssues.length > 0 && (
             <StatusRow severity="warn" title={`${planIssues.length} plan(s) cannot be bought`}>
-              No Dodo product attached: {planIssues.join(', ')}.
+              Missing a checkout link or variant id: {planIssues.join(', ')}.
             </StatusRow>
           )}
 
@@ -105,22 +89,30 @@ export function BillingStatus({
               severity="warn"
               title={`${packIssues.length} credit pack(s) cannot be bought`}
             >
-              No Dodo product attached: {packIssues.join(', ')}.
+              Missing a checkout link or variant id: {packIssues.join(', ')}.
             </StatusRow>
           )}
 
-          {data.webhookConfigured &&
-            data.apiConfigured &&
-            !data.links?.mixed &&
-            !planIssues.length &&
-            !packIssues.length && (
-              <StatusRow severity="ok" title="Everything is wired up">
-                {data.plans?.sellable ?? 0} of {data.plans?.total ?? 0} plans and{' '}
-                {data.creditPacks?.active ?? 0} of {data.creditPacks?.total ?? 0} credit packs are
-                ready to sell.
-              </StatusRow>
-            )}
+          {ready && (
+            <StatusRow severity="ok" title="Everything is wired up">
+              {data.plans?.sellable ?? 0} of {data.plans?.total ?? 0} plans and{' '}
+              {data.creditPacks?.active ?? 0} of {data.creditPacks?.total ?? 0} credit packs are
+              ready to sell.
+            </StatusRow>
+          )}
         </div>
+
+        {data.successUrl && (
+          <div className="status-success-url">
+            <div className="fact-key">Success URL</div>
+            <CopyValue value={data.successUrl} />
+            <p className="text-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              Set this as the redirect / confirmation button link on every Lemon Squeezy product,
+              so buyers come straight back and are credited in seconds. Without it they are still
+              credited by the background poll within about five minutes.
+            </p>
+          </div>
+        )}
 
         <div className="status-facts">
           <Fact label="Plans" value={`${data.plans?.sellable ?? 0} sellable / ${data.plans?.total ?? 0}`} />
@@ -128,7 +120,6 @@ export function BillingStatus({
             label="Credit packs"
             value={`${data.creditPacks?.active ?? 0} active / ${data.creditPacks?.total ?? 0}`}
           />
-          <Fact label="Checkout links" value={`${data.links?.live ?? 0} live · ${data.links?.test ?? 0} test`} />
           <Fact label="Credits per minute" value={formatNumber(data.tariff?.creditsPerMinute)} />
           {Object.entries(data.qualityCost ?? {}).map(([quality, cost]) => (
             <Fact key={quality} label={`Cost · ${quality}`} value={`${formatNumber(cost)} credits`} />

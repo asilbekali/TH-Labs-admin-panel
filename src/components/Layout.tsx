@@ -124,7 +124,6 @@ export function Layout() {
           </button>
           <h1>{current?.label ?? 'Admin'}</h1>
           <div className="topbar-actions">
-            <ModeBadge />
             <HealthBadge />
             <button
               className="btn btn-icon"
@@ -178,25 +177,6 @@ function UntriagedCount() {
 /* -------------------------------------------------------------------------- */
 /* Topbar indicators                                                           */
 /* -------------------------------------------------------------------------- */
-
-/**
- * Test mode must never be a surprise, so it is a persistent badge rather than
- * something you only see on the billing screen. Silent when the overview is
- * unavailable — a missing endpoint is not evidence of either mode.
- */
-function ModeBadge() {
-  const overview = useQuery((signal) => endpoints.billingOverview(signal))
-  const mode = overview.data?.mode
-
-  if (!mode) return null
-
-  return (
-    <Badge tone={mode === 'live' ? 'green' : 'amber'}>
-      <span className="dot" />
-      {String(mode).toUpperCase()}
-    </Badge>
-  )
-}
 
 /** Public endpoint — a cheap at-a-glance read on the API and the pipeline. */
 function HealthBadge() {

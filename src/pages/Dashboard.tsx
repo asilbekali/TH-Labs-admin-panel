@@ -63,8 +63,8 @@ export function Dashboard() {
         />
       )}
 
-      {/* Billing health is the first thing on the page — a missing webhook is
-          invisible everywhere else until a customer has already been charged. */}
+      {/* Billing health is the first thing on the page — a missing Lemon Squeezy
+          API key means no purchase can be credited, and nothing else shows it. */}
       {isMissingRoute(overview.error) ? (
         <InfoNote title="This API build has no admin billing endpoints" tone="warn">
           <code>/v1/admin/billing/overview</code> answered <code>404</code>, so billing health

@@ -1,7 +1,7 @@
 # TH-Labs Studio — Admin Panel
 
 An admin console for the [TH-LABS account API](https://th-labs.uz/docs). Manage
-plans and credit packs and the Dodo Payments wiring behind them, users and their
+plans and credit packs and the Lemon Squeezy wiring behind them, users and their
 roles, community signups, and the activity log of who did what.
 
 **The panel never writes to the backend's shape.** It calls only documented
@@ -320,9 +320,15 @@ So if a screen still reports "this API build has no … endpoints" against
 `th-labs.uz`, the base URL is the thing to check first, not the backend.
 
 The one thing worth checking on the billing status panel: when
-`webhookConfigured` is **false** a customer can pay and receive nothing. Set
-`DODO_WEBHOOK_SECRET` on the API before taking payments. The panel shows that in
-red at the top of Billing and the Dashboard.
+`canGrantCredits` is **false** the API has no `LEMONSQUEEZY_API_KEY`, so no
+order can be verified and no purchase can grant credits. The panel shows that in
+red at the top of Billing and the Dashboard. Lemon Squeezy needs no webhook —
+the API polls for orders — but each LS product should redirect to the
+`successUrl` shown on the Billing screen so buyers are credited in seconds.
+
+Putting a plan or credit pack on sale takes **both** its Lemon Squeezy share
+link (`checkoutUrl`) and its variant id (`lsVariantId`). Either alone saves, but
+the item stays off sale and the API returns a `warning` the panel shows.
 
 Detection note: the panel probes for a missing feature with a **two-segment**
 route (`/admin/logs/actions`, `/admin/logs/stats`), never the bare

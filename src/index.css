@@ -1278,9 +1278,8 @@ td.actions {
 /* Billing status                                                             */
 /* ========================================================================== */
 
-/* The webhook failure is the only one that stays invisible until a customer
-   has already been charged, so it gets a treatment nothing else on the page
-   competes with. */
+/* A missing Lemon Squeezy API key means no purchase can ever be credited, so
+   it gets a treatment nothing else on the page competes with. */
 .alert.critical {
   background: var(--danger-soft);
   border: 1px solid var(--danger);
@@ -1355,6 +1354,16 @@ td.actions {
 }
 .status-body span {
   color: var(--text-muted);
+}
+
+.status-success-url {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+.status-success-url .fact-key {
+  margin-bottom: 6px;
 }
 
 .status-facts {
@@ -1814,4 +1823,25 @@ tr.row-editor > td {
   align-items: center;
   gap: 8px;
   margin-top: 10px;
+}
+
+/* Lemon Squeezy wiring: variant id with the checkout link beneath it. */
+.ls-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ls-link {
+  font-size: 12px;
+}
+.ls-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 12px;
+}
+@media (max-width: 720px) {
+  .ls-fields {
+    grid-template-columns: 1fr;
+  }
 }

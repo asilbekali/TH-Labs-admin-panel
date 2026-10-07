@@ -3,6 +3,8 @@ import { endpoints, isMissingRoute } from '../lib/api'
 import { useMutation, useQuery } from '../lib/useApi'
 import { formatCents, formatNumber } from '../lib/format'
 import {
+  LS_CHECKOUT_URL_PATTERN,
+  LS_VARIANT_ID_PATTERN,
   SLUG_PATTERN,
   type BillingPlan,
   type CreateCreditPackInput,
@@ -28,6 +30,47 @@ import { IconEdit, IconPlus, IconRefresh, IconTrash } from '../components/icons'
 
 const TIER_TONE: Record<string, string> = { FREE: '', PRO: 'blue', STUDIO: 'violet' }
 
+const CHECKOUT_PLACEHOLDER = 'https://your-store.lemonsqueezy.com/checkout/buy/158094fd-…'
+
+/** Client-side mirror of the API's checks, so a typo is caught before a round trip. */
+function checkoutUrlError(value: string): string | undefined {
+  const v = value.trim()
+  if (!v || LS_CHECKOUT_URL_PATTERN.test(v)) return undefined
+  return 'Must be a https://<store>.lemonsqueezy.com/checkout/buy/… link'
+}
+
+function variantIdError(value: string): string | undefined {
+  const v = value.trim()
+  if (!v || LS_VARIANT_ID_PATTERN.test(v)) return undefined
+  return 'A Lemon Squeezy variant id is digits only'
+}
+
+/** Mirrors the server: an item is only sellable with BOTH halves. */
+function wiringHint(checkoutUrl: string, variantId: string): string | undefined {
+  const link = checkoutUrl.trim()
+  const variant = variantId.trim()
+  if (link && !variant) return 'A link without a variant id stays off sale — paid orders are matched on the variant.'
+  if (!link && variant) return 'A variant id without a link cannot be bought yet.'
+  return undefined
+}
+
+/** Shows the variant id, with the checkout link one click away. */
+function LemonSqueezyCell({ item }: { item: { checkoutUrl: string | null; lsVariantId: string | null } }) {
+  if (!item.checkoutUrl && !item.lsVariantId) return <span className="text-faint">Not attached</span>
+  return (
+    <div className="ls-cell">
+      <CopyValue value={item.lsVariantId} empty="No variant id" />
+      {item.checkoutUrl ? (
+        <a href={item.checkoutUrl} target="_blank" rel="noreferrer" className="text-muted ls-link">
+          Open checkout ↗
+        </a>
+      ) : (
+        <span className="text-faint ls-link">No checkout link</span>
+      )}
+    </div>
+  )
+}
+
 export function Billing() {
   const overview = useQuery((signal) => endpoints.billingOverview(signal))
   const plans = useQuery((signal) => endpoints.billingPlans(signal))
@@ -47,7 +90,7 @@ export function Billing() {
     return (
       <>
         <p className="page-intro">
-          Plans, credit packs and the Dodo Payments wiring behind them.
+          Plans, credit packs and the Lemon Squeezy wiring behind them.
         </p>
         <MissingRouteNote
           what="admin billing"
@@ -66,7 +109,7 @@ export function Billing() {
   return (
     <>
       <p className="page-intro">
-        Plans, credit packs and the Dodo Payments wiring behind them. Every number here comes
+        Plans, credit packs and the Lemon Squeezy wiring behind them. Every number here comes
         from the API — nothing on this screen is hardcoded.
       </p>
 
@@ -102,10 +145,11 @@ function PlansSection({ query }: { query: ReturnType<typeof useQuery<BillingPlan
         </button>
       </div>
 
-      <InfoNote title="Plans are fixed — you attach products to them">
-        There is no endpoint to create or delete a plan. Paste a Dodo product id or payment link
-        into a plan to put it on sale; clear that field to take it off sale without deactivating
-        it.
+      <InfoNote title="Plans are fixed — you attach Lemon Squeezy products to them">
+        There is no endpoint to create or delete a plan. Make the product in the Lemon Squeezy
+        dashboard, then paste its share link <em>and</em> its variant id (Products → the product →
+        Variants) into the plan. Both are needed to put it on sale; clear the link to take it off
+        sale without deactivating it.
       </InfoNote>
 
       {query.error && <ErrorState error={query.error} onRetry={query.refetch} />}
@@ -122,7 +166,7 @@ function PlansSection({ query }: { query: ReturnType<typeof useQuery<BillingPlan
                   <th>Price</th>
                   <th>Credits</th>
                   <th>Grant</th>
-                  <th>Dodo product</th>
+                  <th>Lemon Squeezy</th>
                   <th>Status</th>
                   <th />
                 </tr>
@@ -182,7 +226,7 @@ function PlanRow({
         </td>
         <td className="nowrap text-muted">every {plan.grantDays}d</td>
         <td style={{ maxWidth: 240 }}>
-          <CopyValue value={plan.dodoProductId} empty="Not attached" />
+          {plan.sellable ? <LemonSqueezyCell item={plan} /> : <span className="text-faint">—</span>}
         </td>
         <td>
           <PlanStatus plan={plan} />
@@ -214,13 +258,10 @@ function PlanStatus({ plan }: { plan: BillingPlan }) {
   if (!plan.active) return <Badge>Inactive</Badge>
   if (!plan.configured) return <Badge tone="amber">Cannot be bought</Badge>
   return (
-    <div className="badge-stack">
-      <Badge tone="green">
-        <span className="dot" />
-        On sale
-      </Badge>
-      {plan.linkIsTestMode && <Badge tone="amber">test link</Badge>}
-    </div>
+    <Badge tone="green">
+      <span className="dot" />
+      On sale
+    </Badge>
   )
 }
 
@@ -242,11 +283,11 @@ function PlanEditor({
 }) {
   const { toast, toastError } = useToast()
 
-  // The server derives the id from a link and vice versa, so one field holds
-  // whichever half the operator has to hand.
-  const initialProduct = plan.dodoLinkUrl || plan.dodoProductId || ''
+  const initialLink = plan.checkoutUrl ?? ''
+  const initialVariant = plan.lsVariantId ?? ''
 
-  const [product, setProduct] = useState(initialProduct)
+  const [checkoutUrl, setCheckoutUrl] = useState(initialLink)
+  const [variantId, setVariantId] = useState(initialVariant)
   const [priceCents, setPriceCents] = useState(String(plan.priceCents))
   const [creditsGranted, setCreditsGranted] = useState(String(plan.creditsGranted))
   const [grantDays, setGrantDays] = useState(String(plan.grantDays))
@@ -255,11 +296,17 @@ function PlanEditor({
 
   const update = useMutation((input: UpdatePlanInput) => endpoints.updatePlan(plan.id, input))
 
+  const linkError = checkoutUrlError(checkoutUrl)
+  const variantError = variantIdError(variantId)
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
 
+    if (linkError || variantError) return
+
     const patch: UpdatePlanInput = {}
-    if (product.trim() !== initialProduct) patch.dodoProduct = product.trim()
+    if (checkoutUrl.trim() !== initialLink) patch.checkoutUrl = checkoutUrl.trim()
+    if (variantId.trim() !== initialVariant) patch.lsVariantId = variantId.trim()
     if (Number(priceCents) !== plan.priceCents) patch.priceCents = Number(priceCents)
     if (Number(creditsGranted) !== plan.creditsGranted) {
       patch.creditsGranted = Number(creditsGranted)
@@ -278,13 +325,14 @@ function PlanEditor({
     try {
       const saved = await update.mutate(patch)
       toast(
-        saved?.configured
+        saved?.row?.configured && saved.row.active
           ? `${plan.tier}/${plan.cycle} is attached and on sale`
           : `${plan.tier}/${plan.cycle} updated`,
       )
+      if (saved?.warning) toast(saved.warning, 'info')
       onSaved()
     } catch (err) {
-      // 400 (unreadable product value) and 409 (product already attached
+      // 400 (malformed link / variant) and 409 (variant already attached
       // elsewhere) are written for this audience — show them as-is.
       toastError(err, 'Could not update the plan')
     }
@@ -294,20 +342,42 @@ function PlanEditor({
 
   return (
     <form className="inline-editor" onSubmit={onSubmit}>
-      <div className="inline-editor-main">
-        <Field
-          label="Dodo product id or payment link"
-          hint="Both work — the server derives the other half. Leave empty to take this plan off sale without deactivating it."
-        >
-          <input
-            className="input"
-            value={product}
-            onChange={(e) => setProduct(e.target.value)}
-            placeholder="pdt_abc123  ·  https://checkout.dodopayments.com/buy/pdt_abc123"
-            autoFocus
-          />
-        </Field>
-      </div>
+      {plan.sellable ? (
+        <div className="inline-editor-main ls-fields">
+          <Field
+            label="Lemon Squeezy checkout link"
+            hint="The product's share link. Leave empty to take this plan off sale without deactivating it."
+            error={linkError}
+          >
+            <input
+              className="input"
+              value={checkoutUrl}
+              onChange={(e) => setCheckoutUrl(e.target.value)}
+              placeholder={CHECKOUT_PLACEHOLDER}
+              autoFocus
+            />
+          </Field>
+          <Field
+            label="Variant id"
+            hint={wiringHint(checkoutUrl, variantId) ?? 'Paid orders are matched on this.'}
+            error={variantError}
+          >
+            <input
+              className="input mono"
+              inputMode="numeric"
+              value={variantId}
+              onChange={(e) => setVariantId(e.target.value)}
+              placeholder="2203365"
+            />
+          </Field>
+        </div>
+      ) : (
+        <div className="inline-editor-main">
+          <InfoNote title="The FREE tier is never sold">
+            It takes no checkout link or variant id.
+          </InfoNote>
+        </div>
+      )}
 
       <div className="inline-editor-grid">
         <Field label="Price (cents)" hint={formatCents(Number(priceCents))}>
@@ -364,7 +434,11 @@ function PlanEditor({
         <button type="button" className="btn btn-sm" onClick={onCancel} disabled={update.pending}>
           Cancel
         </button>
-        <button className="btn btn-primary btn-sm" type="submit" disabled={update.pending}>
+        <button
+          className="btn btn-primary btn-sm"
+          type="submit"
+          disabled={update.pending || !!linkError || !!variantError}
+        >
           {update.pending && <span className="spinner" />}
           Save plan
         </button>
@@ -438,7 +512,7 @@ function CreditPacksSection({ query }: { query: ReturnType<typeof useQuery<Credi
                   <th>Credits</th>
                   <th>Price</th>
                   <th>Order</th>
-                  <th>Dodo product</th>
+                  <th>Lemon Squeezy</th>
                   <th>Status</th>
                   <th />
                 </tr>
@@ -455,13 +529,13 @@ function CreditPacksSection({ query }: { query: ReturnType<typeof useQuery<Credi
                     <td className="nowrap">{formatNumber(pack.credits)}</td>
                     <td className="nowrap">
                       {formatCents(pack.priceCents)}
-                      {pack.currency && pack.currency !== 'USD' && (
+                      {pack.currency && pack.currency.toUpperCase() !== 'USD' && (
                         <span className="text-faint"> {pack.currency}</span>
                       )}
                     </td>
                     <td className="text-muted">{pack.sortOrder}</td>
                     <td style={{ maxWidth: 220 }}>
-                      <CopyValue value={pack.dodoProductId} empty="Not attached" />
+                      <LemonSqueezyCell item={pack} />
                     </td>
                     <td>
                       {!pack.active ? (
@@ -469,13 +543,10 @@ function CreditPacksSection({ query }: { query: ReturnType<typeof useQuery<Credi
                       ) : !pack.configured ? (
                         <Badge tone="amber">Cannot be bought</Badge>
                       ) : (
-                        <div className="badge-stack">
-                          <Badge tone="green">
-                            <span className="dot" />
-                            On sale
-                          </Badge>
-                          {pack.linkIsTestMode && <Badge tone="amber">test link</Badge>}
-                        </div>
+                        <Badge tone="green">
+                          <span className="dot" />
+                          On sale
+                        </Badge>
                       )}
                     </td>
                     <td className="actions">
@@ -545,9 +616,9 @@ function CreditPacksSection({ query }: { query: ReturnType<typeof useQuery<Credi
               {formatNumber(deleting.credits)} credits for {formatCents(deleting.priceCents)}) will
               be permanently deleted.
               <p style={{ marginTop: 10 }}>
-                A payment already in flight carries this slug in its checkout metadata. If one
-                arrives after the pack is gone, the webhook will have nothing to grant and the
-                customer will be charged for nothing. Setting the pack inactive instead retires it
+                Deleting a pack takes its Lemon Squeezy variant id with it. An order still in
+                flight for it will then have nothing to match and will not grant credits — the
+                customer is charged for nothing. Setting the pack inactive instead retires it
                 safely.
               </p>
             </>
@@ -570,15 +641,17 @@ function CreditPackModal({
   const { toast, toastError } = useToast()
   const isEdit = !!pack
 
-  const initialProduct = pack?.dodoLinkUrl || pack?.dodoProductId || ''
+  const initialLink = pack?.checkoutUrl ?? ''
+  const initialVariant = pack?.lsVariantId ?? ''
 
   const [slug, setSlug] = useState(pack?.slug ?? '')
   const [credits, setCredits] = useState(String(pack?.credits ?? ''))
   const [priceCents, setPriceCents] = useState(String(pack?.priceCents ?? ''))
-  const [currency, setCurrency] = useState(pack?.currency ?? 'USD')
+  const [currency, setCurrency] = useState((pack?.currency ?? 'usd').toUpperCase())
   const [popular, setPopular] = useState(pack?.popular ?? false)
   const [sortOrder, setSortOrder] = useState(String(pack?.sortOrder ?? 0))
-  const [product, setProduct] = useState(initialProduct)
+  const [checkoutUrl, setCheckoutUrl] = useState(initialLink)
+  const [variantId, setVariantId] = useState(initialVariant)
   const [active, setActive] = useState(pack?.active ?? true)
 
   const save = useMutation((input: CreateCreditPackInput | UpdateCreditPackInput) =>
@@ -588,9 +661,12 @@ function CreditPackModal({
   )
 
   const slugInvalid = !isEdit && slug.length > 0 && !SLUG_PATTERN.test(slug)
+  const linkError = checkoutUrlError(checkoutUrl)
+  const variantError = variantIdError(variantId)
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (linkError || variantError) return
 
     const base = {
       credits: Number(credits),
@@ -602,17 +678,23 @@ function CreditPackModal({
     }
 
     try {
+      let warning: string | null | undefined
       if (isEdit) {
-        // Only send dodoProduct when it actually changed, so saving an
-        // unrelated field can't clear or re-derive the attached product.
+        // Only send the LS fields when they actually changed, so saving an
+        // unrelated field can't clear the attached product.
         const patch: UpdateCreditPackInput = { ...base }
-        if (product.trim() !== initialProduct) patch.dodoProduct = product.trim()
-        await save.mutate(patch)
+        if (checkoutUrl.trim() !== initialLink) patch.checkoutUrl = checkoutUrl.trim()
+        if (variantId.trim() !== initialVariant) patch.lsVariantId = variantId.trim()
+        warning = (await save.mutate(patch))?.warning
         toast(`Updated pack ${pack.slug}`)
       } else {
-        await save.mutate({ ...base, slug: slug.trim(), dodoProduct: product.trim() })
+        const input: CreateCreditPackInput = { ...base, slug: slug.trim() }
+        if (checkoutUrl.trim()) input.checkoutUrl = checkoutUrl.trim()
+        if (variantId.trim()) input.lsVariantId = variantId.trim()
+        warning = (await save.mutate(input))?.warning
         toast(`Created pack ${slug.trim()}`)
       }
+      if (warning) toast(warning, 'info')
       onDone()
     } catch (err) {
       toastError(err, isEdit ? 'Could not update the pack' : 'Could not create the pack')
@@ -637,7 +719,7 @@ function CreditPackModal({
             className="btn btn-primary"
             form="pack-form"
             type="submit"
-            disabled={save.pending || slugInvalid}
+            disabled={save.pending || slugInvalid || !!linkError || !!variantError}
           >
             {save.pending && <span className="spinner" />}
             {isEdit ? 'Save pack' : 'Create pack'}
@@ -650,7 +732,7 @@ function CreditPackModal({
           label="Slug"
           hint={
             isEdit
-              ? 'Permanent — it travels in checkout metadata and the webhook reads it back.'
+              ? 'Permanent — it travels in the checkout custom data and the payment history.'
               : 'Lowercase letters, digits, underscore and hyphen. 3–60 characters. This cannot be changed later.'
           }
           error={slugInvalid ? 'Must match ^[a-z0-9_-]{3,60}$' : undefined}
@@ -706,14 +788,36 @@ function CreditPackModal({
         </div>
 
         <Field
-          label="Dodo product id or payment link"
-          hint="Both work — the server derives the other half. Leave empty to create the pack unattached."
+          label="Lemon Squeezy checkout link"
+          hint={
+            isEdit
+              ? 'The product\'s share link. Leave empty to take the pack off sale.'
+              : 'The product\'s share link. Leave empty to create the pack unattached.'
+          }
+          error={linkError}
         >
           <input
             className="input"
-            value={product}
-            onChange={(e) => setProduct(e.target.value)}
-            placeholder="pdt_abc123  ·  https://checkout.dodopayments.com/buy/pdt_abc123"
+            value={checkoutUrl}
+            onChange={(e) => setCheckoutUrl(e.target.value)}
+            placeholder={CHECKOUT_PLACEHOLDER}
+          />
+        </Field>
+
+        <Field
+          label="Variant id"
+          hint={
+            wiringHint(checkoutUrl, variantId) ??
+            'Products → the product → Variants in the LS dashboard. Paid orders are matched on it.'
+          }
+          error={variantError}
+        >
+          <input
+            className="input mono"
+            inputMode="numeric"
+            value={variantId}
+            onChange={(e) => setVariantId(e.target.value)}
+            placeholder="2203420"
           />
         </Field>
 

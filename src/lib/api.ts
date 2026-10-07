@@ -278,6 +278,7 @@ import type {
   ApiUser,
   BillingOverview,
   BillingPlan,
+  BillingSaveResult,
   CommunityMember,
   CreateAdminInput,
   CreateCommunityInput,
@@ -319,6 +320,18 @@ export function unwrapList<T>(payload: unknown): T[] {
     }
   }
   return []
+}
+
+/**
+ * Billing writes answer `{ plan | pack, warning }`. Tolerate a bare row too, so
+ * an older API build still reads.
+ */
+export function toSaveResult<T>(payload: unknown, key: 'plan' | 'pack'): BillingSaveResult<T> {
+  if (!payload || typeof payload !== 'object') return { row: null, warning: null }
+  const record = payload as Record<string, unknown>
+  const warning = typeof record.warning === 'string' && record.warning ? record.warning : null
+  const row = (key in record ? record[key] : payload) as T
+  return { row, warning }
 }
 
 /** Drops undefined, empty-string and null params so they never hit the wire. */
@@ -494,14 +507,17 @@ export const endpoints = {
     api.get<BillingOverview>('/admin/billing/overview', signal),
   billingPlans: async (signal?: AbortSignal) =>
     unwrapList<BillingPlan>(await api.get<unknown>('/admin/billing/plans', signal)),
-  updatePlan: (id: string, input: UpdatePlanInput) =>
-    api.patch<BillingPlan>(`/admin/billing/plans/${id}`, input),
+  updatePlan: async (id: string, input: UpdatePlanInput) =>
+    toSaveResult<BillingPlan>(await api.patch<unknown>(`/admin/billing/plans/${id}`, input), 'plan'),
   creditPacks: async (signal?: AbortSignal) =>
     unwrapList<CreditPack>(await api.get<unknown>('/admin/billing/credit-packs', signal)),
-  createCreditPack: (input: CreateCreditPackInput) =>
-    api.post<CreditPack>('/admin/billing/credit-packs', input),
-  updateCreditPack: (id: string, input: UpdateCreditPackInput) =>
-    api.patch<CreditPack>(`/admin/billing/credit-packs/${id}`, input),
+  createCreditPack: async (input: CreateCreditPackInput) =>
+    toSaveResult<CreditPack>(await api.post<unknown>('/admin/billing/credit-packs', input), 'pack'),
+  updateCreditPack: async (id: string, input: UpdateCreditPackInput) =>
+    toSaveResult<CreditPack>(
+      await api.patch<unknown>(`/admin/billing/credit-packs/${id}`, input),
+      'pack',
+    ),
   /** SUPERADMIN only. Prefer active:false. */
   deleteCreditPack: (id: string) => api.delete<unknown>(`/admin/billing/credit-packs/${id}`),
 

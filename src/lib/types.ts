@@ -54,7 +54,7 @@ export interface ApiUser {
   role: Role
   credits?: number
   freeDubUsed?: boolean
-  dodoCustomerId?: string | null
+  lsCustomerId?: string | null
   createdAt: string
   updatedAt?: string
   [key: string]: unknown
@@ -131,15 +131,22 @@ export interface UpdateCommunityInput {
 /* -------------------------------------------------------------------------- */
 
 export interface BillingOverview {
-  provider: string
-  mode: 'test' | 'live' | string
-  /** False → static payment links only; cancel and the customer portal are off. */
-  apiConfigured: boolean
-  /** False → a payment can never grant credits. The loudest failure there is. */
-  webhookConfigured: boolean
+  provider: 'lemonsqueezy' | string
+  /**
+   * THE critical flag. False means LEMONSQUEEZY_API_KEY is not set on the API,
+   * so no order can be verified as paid and no purchase can ever grant
+   * credits. Buy buttons are disabled on the site while it is false.
+   */
+  canGrantCredits: boolean
+  /**
+   * Set this as every Lemon Squeezy product's redirect / confirmation button
+   * link, so the buyer is brought straight back and credited in seconds.
+   */
+  successUrl: string | null
+  /** Lemon Squeezy needs no webhook — purchases are found by polling its API. */
+  webhook?: { required: boolean; note: string }
   plans: { total: number; sellable: number; unconfigured: string[] }
   creditPacks: { total: number; active: number; unconfigured: string[] }
-  links: { live: number; test: number; mixed: boolean }
   qualityCost: Record<string, number>
   tariff: { creditsPerMinute: number; qualityMultiplier: Record<string, number> }
   [key: string]: unknown
@@ -153,27 +160,28 @@ export interface BillingPlan {
   creditsGranted: number
   grantDays: number
   grantsPerPeriod: number
-  dodoProductId: string | null
-  dodoLinkUrl: string | null
+  /** `https://<store>.lemonsqueezy.com/checkout/buy/<uuid>` — what Buy opens. */
+  checkoutUrl: string | null
+  /** The LS variant that link sells. Paid orders are matched on it. */
+  lsVariantId: string | null
   active: boolean
-  /** False → the plan cannot be bought, whatever `active` says. */
+  /** False → the plan cannot be bought, whatever `active` says. Needs BOTH link and variant. */
   configured: boolean
   /** False for the FREE tier — nothing to sell. */
   sellable: boolean
   /** creditsGranted × grantsPerPeriod. */
   creditsPerPeriod: number
-  linkIsTestMode: boolean
   [key: string]: unknown
 }
 
 /**
  * PATCH /v1/admin/billing/plans/:id — every field optional, send only what
- * changed. `dodoProduct` takes either a bare product id or a full payment
- * link; the server derives the other half. "" clears it, taking the plan off
- * sale without deactivating it.
+ * changed. "" clears `checkoutUrl` / `lsVariantId`, taking the plan off sale
+ * without deactivating it.
  */
 export interface UpdatePlanInput {
-  dodoProduct?: string
+  checkoutUrl?: string
+  lsVariantId?: string
   priceCents?: number
   creditsGranted?: number
   grantDays?: number
@@ -183,20 +191,36 @@ export interface UpdatePlanInput {
 
 export interface CreditPack {
   id: string
-  /** Permanent. It travels in checkout metadata and the webhook reads it back. */
+  /** Permanent. It travels in the checkout's custom data and the history. */
   slug: string
   credits: number
   priceCents: number
   currency: string
   popular: boolean
   sortOrder: number
-  dodoProductId: string | null
-  dodoLinkUrl: string | null
+  checkoutUrl: string | null
+  lsVariantId: string | null
   active: boolean
   configured: boolean
-  linkIsTestMode: boolean
   [key: string]: unknown
 }
+
+/**
+ * Every billing write answers with the saved row plus a `warning` when it is
+ * half wired up (a link without a variant id, or the reverse) — saved, but
+ * still off sale.
+ */
+export interface BillingSaveResult<T> {
+  row: T | null
+  warning: string | null
+}
+
+/** Lemon Squeezy hosted checkout — mirrors the API's own validation. */
+export const LS_CHECKOUT_URL_PATTERN =
+  /^https:\/\/[a-z0-9-]+\.lemonsqueezy\.com\/(checkout\/)?buy\/[A-Za-z0-9-]+(\?[\w\-=&.%[\]]*)?$/
+
+/** An LS variant id is digits only. */
+export const LS_VARIANT_ID_PATTERN = /^\d{1,15}$/
 
 export const SLUG_PATTERN = /^[a-z0-9_-]{3,60}$/
 
@@ -207,7 +231,8 @@ export interface CreateCreditPackInput {
   currency?: string
   popular?: boolean
   sortOrder?: number
-  dodoProduct?: string
+  checkoutUrl?: string
+  lsVariantId?: string
   active?: boolean
 }
 

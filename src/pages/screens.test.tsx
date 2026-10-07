@@ -9,9 +9,9 @@ import { setAccessToken } from '../lib/api'
  * shapes, so a screen that throws on a field it did not expect fails here
  * rather than in front of an admin.
  *
- * The billing assertions are the point of the file: a missing webhook means a
- * customer can pay and receive nothing, and that has to be the loudest thing
- * on the page rather than a field in a table.
+ * The billing assertions are the point of the file: a missing Lemon Squeezy
+ * API key means no purchase can ever be credited, and that has to be the
+ * loudest thing on the page rather than a field in a table.
  */
 
 const SUPERADMIN = {
@@ -23,13 +23,12 @@ const SUPERADMIN = {
 }
 
 const OVERVIEW = {
-  provider: 'dodo',
-  mode: 'test',
-  apiConfigured: true,
-  webhookConfigured: false,
+  provider: 'lemonsqueezy',
+  canGrantCredits: false,
+  successUrl: 'https://th-labs.uz/plans/success',
+  webhook: { required: false, note: 'No webhook is needed.' },
   plans: { total: 7, sellable: 6, unconfigured: ['PRO/MONTHLY'] },
   creditPacks: { total: 4, active: 4, unconfigured: ['pack_240'] },
-  links: { live: 0, test: 4, mixed: false },
   qualityCost: { fast: 5, balanced: 10, studio: 20 },
   tariff: { creditsPerMinute: 53, qualityMultiplier: { fast: 1 } },
 }
@@ -43,13 +42,12 @@ const PLANS = [
     creditsGranted: 1200,
     grantDays: 30,
     grantsPerPeriod: 1,
-    dodoProductId: null,
-    dodoLinkUrl: null,
+    checkoutUrl: null,
+    lsVariantId: null,
     active: true,
     configured: false,
     sellable: true,
     creditsPerPeriod: 1200,
-    linkIsTestMode: false,
   },
 ]
 
@@ -59,14 +57,13 @@ const PACKS = [
     slug: 'pack_240',
     credits: 240,
     priceCents: 500,
-    currency: 'USD',
+    currency: 'usd',
     popular: true,
     sortOrder: 1,
-    dodoProductId: 'pdt_live_1',
-    dodoLinkUrl: 'https://checkout.dodopayments.com/buy/pdt_live_1',
+    checkoutUrl: 'https://th-labs.lemonsqueezy.com/checkout/buy/158094fd-d3ba-4dfd-8e9d-f9d713036ea4',
+    lsVariantId: '2203420',
     active: true,
     configured: true,
-    linkIsTestMode: true,
   },
 ]
 
@@ -144,8 +141,8 @@ function stubApi() {
           return { ok: true, payload: { accessToken: 'tok', user: SUPERADMIN } }
         }
         if (url.includes('/admin/billing/overview')) return { ok: true, payload: OVERVIEW }
-        if (url.includes('/admin/billing/plans')) return { ok: true, payload: PLANS }
-        if (url.includes('/admin/billing/credit-packs')) return { ok: true, payload: PACKS }
+        if (url.includes('/admin/billing/plans')) return { ok: true, payload: { plans: PLANS } }
+        if (url.includes('/admin/billing/credit-packs')) return { ok: true, payload: { packs: PACKS } }
         if (url.includes('/admin/logs/stream')) return { ok: false, payload: null }
         if (url.includes('/admin/logs/actions')) {
           return { ok: true, payload: ['user.role.change', 'billing.plan.update'] }
@@ -227,26 +224,28 @@ async function open(path: string) {
 }
 
 describe('billing screen', () => {
-  it('makes an unconfigured webhook the loudest thing on the page', async () => {
+  it('makes a missing Lemon Squeezy API key the loudest thing on the page', async () => {
     await open('/billing')
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Payments are accepted but no credits will be granted/i),
-      ).toBeTruthy()
+      expect(screen.getByText(/Purchases cannot grant credits/i)).toBeTruthy()
     })
 
     // It says what to do next, not just that something is wrong. Named in
     // both the banner and the status row, hence getAllByText.
-    expect(screen.getAllByText(/DODO_WEBHOOK_SECRET/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/LEMONSQUEEZY_API_KEY/).length).toBeGreaterThan(0)
     // And it is rendered with the critical treatment, not a generic warning.
     expect(document.querySelector('.alert.critical')).toBeTruthy()
   })
 
-  it('shows test mode and lists what cannot be bought', async () => {
+  it('shows the success URL and lists what cannot be bought', async () => {
     await open('/billing')
 
-    await waitFor(() => expect(screen.getAllByText(/TEST/).length).toBeGreaterThan(0))
+    await waitFor(() =>
+      expect(screen.getAllByText('https://th-labs.uz/plans/success').length).toBeGreaterThan(0),
+    )
+    // The attached pack shows its variant id.
+    await waitFor(() => expect(screen.getByText('2203420')).toBeTruthy())
     // Each unconfigured item is named in the status list, and packs again in
     // their own table.
     expect(screen.getAllByText(/PRO\/MONTHLY/).length).toBeGreaterThan(0)
@@ -260,11 +259,15 @@ describe('billing screen', () => {
 
     fireEvent.click(screen.getByTitle('Edit plan'))
 
-    // One field takes either half of the Dodo product, as the API accepts both.
-    expect(screen.getAllByText(/Dodo product id or payment link/i).length).toBeGreaterThan(0)
-    expect(
-      screen.getByPlaceholderText(/pdt_abc123/),
-    ).toBeTruthy()
+    // Lemon Squeezy needs both halves: the share link and the variant id.
+    expect(screen.getByText('Lemon Squeezy checkout link')).toBeTruthy()
+    expect(screen.getByText('Variant id')).toBeTruthy()
+
+    // A non-LS link is caught before it reaches the API.
+    fireEvent.change(screen.getByPlaceholderText(/lemonsqueezy\.com/), {
+      target: { value: 'https://checkout.dodopayments.com/buy/pdt_1' },
+    })
+    expect(screen.getByText(/Must be a https:\/\/<store>\.lemonsqueezy\.com/)).toBeTruthy()
   })
 })
 
@@ -309,9 +312,7 @@ describe('dashboard', () => {
     await open('/')
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Payments are accepted but no credits will be granted/i),
-      ).toBeTruthy()
+      expect(screen.getByText(/Purchases cannot grant credits/i)).toBeTruthy()
     })
     expect(screen.getByText(/Changed the role of ada@example.com/)).toBeTruthy()
   })

@@ -297,6 +297,8 @@ import type {
   LogStats,
   Role,
   PriceToken,
+  SendMailInput,
+  SendMailResult,
   StatsBucket,
   UpdateAdminInput,
   UpdateCommunityInput,
@@ -492,6 +494,13 @@ export const endpoints = {
     api.patch<FeedbackRow>(`/feedback/${id}`, input),
   /** SUPERADMIN only. Prefer status SPAM — a delete cannot be undone. */
   deleteFeedback: (id: number) => api.delete<unknown>(`/feedback/${id}`),
+
+  /* ---------------------------- staff email ------------------------------ */
+  /**
+   * ADMIN and SUPERADMIN. Answers per-recipient results; a 503 means the API
+   * has no SMTP credentials, a JSON 404 that this API build predates the route.
+   */
+  sendMail: (input: SendMailInput) => api.post<SendMailResult>('/admin/mail', input),
 
   /* --------------------------- price tokens ------------------------------- */
   /**

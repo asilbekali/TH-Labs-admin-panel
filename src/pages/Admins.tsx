@@ -16,6 +16,7 @@ import {
   TableSkeleton,
 } from '../components/ui'
 import { IconEdit, IconPlus, IconRefresh, IconTrash } from '../components/icons'
+import { AccessDenied } from '../auth/permissions'
 
 export function Admins() {
   const { user, isSuperAdmin } = useAuth()
@@ -30,14 +31,7 @@ export function Admins() {
 
   // The whole /v1/admin surface is SUPERADMIN-only; an ADMIN would just collect
   // 403s, so say that instead of rendering a broken table.
-  if (!isSuperAdmin) {
-    return (
-      <InfoNote title="SUPERADMIN access required" tone="warn">
-        Admin account management is restricted to the SUPERADMIN role. Your account is{' '}
-        <strong>{user?.role}</strong>.
-      </InfoNote>
-    )
-  }
+  if (!isSuperAdmin) return <AccessDenied what="admin records" />
 
   async function confirmDelete() {
     if (!deleting) return

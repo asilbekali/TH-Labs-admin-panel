@@ -23,7 +23,9 @@ import {
 } from '../lib/types'
 import { useAuth } from '../auth/AuthContext'
 import { useFeedbackInbox } from '../lib/feedbackInbox'
-import { ConfirmDialog } from '../components/Modal'
+import { ConfirmDialog, Modal } from '../components/Modal'
+import { ComposeForm } from '../components/Compose'
+import { usePermissions } from '../auth/permissions'
 import { useToast } from '../components/Toast'
 import {
   Badge,
@@ -39,7 +41,9 @@ import {
 } from '../components/ui'
 import {
   IconChevron,
+  IconLock,
   IconRefresh,
+  IconReply,
   IconSearch,
   IconStar,
   IconTrash,
@@ -69,6 +73,7 @@ const EMPTY_FILTERS: Filters = { q: '', status: '', kind: '' }
 
 export function Feedback() {
   const { user, isSuperAdmin } = useAuth()
+  const { requireSuperAdmin } = usePermissions()
   const { toast, toastError } = useToast()
   const inboxCount = useFeedbackInbox()
 
@@ -238,7 +243,9 @@ export function Feedback() {
                     row={row}
                     canDelete={isSuperAdmin}
                     onChanged={refresh}
-                    onDelete={() => setDeleting(row)}
+                    onDelete={() => {
+                      if (requireSuperAdmin('deleting feedback')) setDeleting(row)
+                    }}
                   />
                 ))}
               </div>
@@ -273,8 +280,8 @@ export function Feedback() {
 
       {!isSuperAdmin && (
         <InfoNote title="Deleting requires SUPERADMIN">
-          Your role can read every message and triage it. Deleting is restricted to SUPERADMIN —
-          mark a message <code>SPAM</code> instead, which is reversible.
+          Your role can read, triage and reply to every message. Deleting is restricted to
+          SUPERADMIN — mark a message <code>SPAM</code> instead, which is reversible.
         </InfoNote>
       )}
 
@@ -438,7 +445,10 @@ function TriageForm({
   onDelete: () => void
 }) {
   const { toast, toastError } = useToast()
+  const { user } = useAuth()
   const initialNote = row.adminNote ?? ''
+  const [replying, setReplying] = useState(false)
+  const [resolveOnReply, setResolveOnReply] = useState(true)
 
   const [status, setStatus] = useState<FeedbackStatus>(
     (FEEDBACK_STATUSES as string[]).includes(row.status)
@@ -472,46 +482,107 @@ function TriageForm({
   }
 
   return (
-    <form className="inline-editor" onSubmit={onSubmit}>
-      <div className="inline-editor-grid">
-        <Field label="Status" hint="Only a person can move this — opening a message changes nothing.">
-          <select
-            className="select"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as FeedbackStatus)}
-          >
-            {FEEDBACK_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+    <>
+      <form className="inline-editor" onSubmit={onSubmit}>
+        <div className="inline-editor-grid">
+          <Field label="Status" hint="Only a person can move this — opening a message changes nothing.">
+            <select
+              className="select"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as FeedbackStatus)}
+            >
+              {FEEDBACK_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Staff note" hint="Private — never shown to the sender.">
+          <textarea
+            className="input"
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Reproduced on an 11-minute clip. Filed as PIPE-204."
+          />
         </Field>
-      </div>
 
-      <Field label="Staff note" hint="Private — never shown to the sender.">
-        <textarea
-          className="input"
-          rows={3}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Reproduced on an 11-minute clip. Filed as PIPE-204."
-        />
-      </Field>
-
-      <div className="inline-editor-actions">
-        {canDelete && (
-          <button type="button" className="btn btn-sm danger" onClick={onDelete}>
-            <IconTrash />
+        <div className="inline-editor-actions">
+          <button
+            type="button"
+            className={`btn btn-sm danger${canDelete ? '' : ' locked'}`}
+            onClick={onDelete}
+            title={canDelete ? 'Delete message' : 'Delete message — SUPERADMIN only'}
+          >
+            {canDelete ? <IconTrash /> : <IconLock />}
             Delete
           </button>
+          <div className="spacer" />
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setReplying(true)}
+            disabled={!row.email}
+            title={row.email ? `Reply to ${row.email}` : 'The sender left no email address'}
+          >
+            <IconReply />
+            Reply by email
+          </button>
+          <button className="btn btn-primary btn-sm" type="submit" disabled={!dirty || update.pending}>
+            {update.pending && <span className="spinner" />}
+            Save triage
+          </button>
+        </div>
+      </form>
+
+        {replying && row.email && (
+          <Modal
+            wide
+            title={`Reply to ${row.name || row.email}`}
+            subtitle={row.email}
+            onClose={() => setReplying(false)}
+          >
+            <blockquote className="quoted">{row.message}</blockquote>
+            <ComposeForm
+              recipients={[{ email: row.email, name: row.name ?? undefined }]}
+              feedbackId={row.id}
+              initial={{
+                subject: `Re: ${row.subject || firstLine(row.message)}`,
+                message: '\n\n— The TH-Labs team',
+              }}
+              extra={
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={resolveOnReply}
+                    onChange={(e) => setResolveOnReply(e.target.checked)}
+                  />
+                  Mark as resolved and note the reply
+                </label>
+              }
+              onCancel={() => setReplying(false)}
+              onSent={async () => {
+                setReplying(false)
+                if (!resolveOnReply) return
+                // Appended, never replacing: a staff note is not something to
+                // lose because somebody replied.
+                const stamp = `Replied by email — ${user?.email ?? 'staff'}, ${new Date().toLocaleString()}`
+                try {
+                  await endpoints.updateFeedback(row.id, {
+                    status: 'RESOLVED',
+                    adminNote: row.adminNote ? `${row.adminNote}\n${stamp}` : stamp,
+                  })
+                } catch (err) {
+                  toastError(err, 'Reply sent, but the message could not be marked resolved')
+                }
+                onDone()
+              }}
+            />
+          </Modal>
         )}
-        <div className="spacer" />
-        <button className="btn btn-primary btn-sm" type="submit" disabled={!dirty || update.pending}>
-          {update.pending && <span className="spinner" />}
-          Save triage
-        </button>
-      </div>
-    </form>
+    </>
   )
 }

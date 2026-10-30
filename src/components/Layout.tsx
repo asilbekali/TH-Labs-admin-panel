@@ -6,12 +6,16 @@ import { useQuery } from '../lib/useApi'
 import { useFeedbackInbox } from '../lib/feedbackInbox'
 import { initialsOf } from '../lib/format'
 import { Badge } from './ui'
+import { BrandMark } from './Logo'
 import {
   IconActivity,
   IconCard,
   IconDashboard,
+  IconGamepad,
   IconList,
+  IconLock,
   IconLogout,
+  IconMail,
   IconMenu,
   IconMessage,
   IconMoon,
@@ -26,20 +30,33 @@ interface NavItem {
   label: string
   icon: (p: { className?: string }) => React.ReactElement
   end?: boolean
+  /** Still listed for an ADMIN — with a lock, leading to an access-denied page. */
   superAdminOnly?: boolean
   /** Renders the untriaged-feedback count beside the label. */
   badge?: 'feedback'
 }
 
-const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: IconDashboard, end: true },
-  { to: '/users', label: 'Users', icon: IconUsers },
-  { to: '/feedback', label: 'Feedback', icon: IconMessage, badge: 'feedback' },
-  { to: '/community', label: 'Community', icon: IconList },
-  { to: '/billing', label: 'Billing', icon: IconCard },
-  { to: '/activity', label: 'Activity log', icon: IconActivity },
-  { to: '/admins', label: 'Admin records', icon: IconShield, superAdminOnly: true },
+const NAV: Array<{ label: string; items: NavItem[] }> = [
+  {
+    label: 'Manage',
+    items: [
+      { to: '/', label: 'Dashboard', icon: IconDashboard, end: true },
+      { to: '/users', label: 'Users', icon: IconUsers },
+      { to: '/feedback', label: 'Feedback', icon: IconMessage, badge: 'feedback' },
+      { to: '/mail', label: 'Send email', icon: IconMail },
+      { to: '/community', label: 'Community', icon: IconList },
+      { to: '/billing', label: 'Billing', icon: IconCard },
+      { to: '/activity', label: 'Activity log', icon: IconActivity },
+      { to: '/admins', label: 'Admin records', icon: IconShield, superAdminOnly: true },
+    ],
+  },
+  {
+    label: 'Take a break',
+    items: [{ to: '/games', label: 'Break room', icon: IconGamepad }],
+  },
 ]
+
+const ALL_ITEMS = NAV.flatMap((group) => group.items)
 
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(
@@ -60,19 +77,17 @@ export function Layout() {
   const location = useLocation()
   const [navOpen, setNavOpen] = useState(false)
 
-  const items = NAV.filter((item) => !item.superAdminOnly || isSuperAdmin)
-  const current = items.find((i) =>
+  const current = ALL_ITEMS.find((i) =>
     i.end ? location.pathname === i.to : location.pathname.startsWith(i.to),
   )
 
-  
   return (
     <div className="shell">
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
 
       <aside className={`sidebar${navOpen ? ' open' : ''}`}>
         <div className="brand">
-          <div className="brand-mark">TH</div>
+          <BrandMark />
           <div>
             <div className="brand-name">TH-Labs Studio</div>
             <div className="brand-sub">Admin panel</div>
@@ -80,21 +95,32 @@ export function Layout() {
         </div>
 
         <nav className="nav">
-          <div className="nav-label">Manage</div>
-          {items.map(({ to, label, icon: Icon, end, badge }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-              // Dismiss the mobile drawer from the navigation itself rather
-              // than reacting to the route change after the fact.
-              onClick={() => setNavOpen(false)}
-            >
-              <Icon />
-              {label}
-              {badge === 'feedback' && <UntriagedCount />}
-            </NavLink>
+          {NAV.map((group) => (
+            <div key={group.label} className="nav-group">
+              <div className="nav-label">{group.label}</div>
+              {group.items.map(({ to, label, icon: Icon, end, badge, superAdminOnly }) => {
+                const locked = superAdminOnly && !isSuperAdmin
+                return (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={end}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? ' active' : ''}${locked ? ' locked' : ''}`
+                    }
+                    title={locked ? `${label} — SUPERADMIN only` : undefined}
+                    // Dismiss the mobile drawer from the navigation itself rather
+                    // than reacting to the route change after the fact.
+                    onClick={() => setNavOpen(false)}
+                  >
+                    <Icon />
+                    {label}
+                    {badge === 'feedback' && <UntriagedCount />}
+                    {locked && <IconLock className="nav-lock" />}
+                  </NavLink>
+                )
+              })}
+            </div>
           ))}
         </nav>
 
@@ -103,7 +129,9 @@ export function Layout() {
             <div className="avatar">{initialsOf(user?.name, user?.email)}</div>
             <div className="user-chip-meta">
               <div className="user-chip-name">{user?.name || user?.email}</div>
-              <div className="user-chip-role">{user?.role}</div>
+              <div className={`role-pill ${isSuperAdmin ? 'super' : ''}`}>
+                {isSuperAdmin ? 'Super admin · full access' : 'Admin · limited access'}
+              </div>
             </div>
           </div>
           <button className="btn btn-ghost btn-block btn-sm" onClick={() => void logout()}>

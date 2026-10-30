@@ -6,6 +6,7 @@ import { formatDateTime, formatNumber, initialsOf, relativeTime } from '../lib/f
 import type { ApiUser, CreateUserInput, Role, UpdateUserInput } from '../lib/types'
 import { ROLES } from '../lib/types'
 import { useAuth } from '../auth/AuthContext'
+import { GuardedIconButton } from '../auth/permissions'
 import { ConfirmDialog, Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import {
@@ -19,6 +20,7 @@ import {
 import {
   IconEdit,
   IconEye,
+  IconMail,
   IconRefresh,
   IconSearch,
   IconShield,
@@ -31,7 +33,7 @@ type SortDir = 'asc' | 'desc'
 
 export function Users() {
   const { toast, toastError } = useToast()
-  const { isSuperAdmin, user: me } = useAuth()
+  const { user: me } = useAuth()
   const users = useQuery((signal) => endpoints.users(signal))
 
   const [search, setSearch] = useState('')
@@ -220,22 +222,40 @@ export function Users() {
                       >
                         <IconEdit />
                       </button>
-                      {isSuperAdmin && (
-                        <button
-                          className="btn btn-icon"
-                          onClick={() => setChangingRole(u)}
-                          title="Change role (SUPERADMIN)"
-                        >
-                          <IconShield />
-                        </button>
-                      )}
-                      <button
-                        className="btn btn-icon danger"
-                        onClick={() => setDeleting(u)}
-                        title="Delete user"
+                      <Link
+                        className="btn btn-icon"
+                        to={`/mail?to=${encodeURIComponent(u.email)}`}
+                        title="Send email"
                       >
-                        <IconTrash />
-                      </button>
+                        <IconMail />
+                      </Link>
+                      <GuardedIconButton
+                        action="changing user roles"
+                        title="Change role"
+                        onClick={() => setChangingRole(u)}
+                      >
+                        <IconShield />
+                      </GuardedIconButton>
+                      {/* The API lets anyone delete their own account; only a
+                          SUPERADMIN reaches somebody else's. */}
+                      {u.id === me?.id ? (
+                        <button
+                          className="btn btn-icon danger"
+                          onClick={() => setDeleting(u)}
+                          title="Delete user"
+                        >
+                          <IconTrash />
+                        </button>
+                      ) : (
+                        <GuardedIconButton
+                          action="deleting other users"
+                          title="Delete user"
+                          danger
+                          onClick={() => setDeleting(u)}
+                        >
+                          <IconTrash />
+                        </GuardedIconButton>
+                      )}
                     </td>
                   </tr>
                 ))}

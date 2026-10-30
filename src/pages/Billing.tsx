@@ -12,7 +12,7 @@ import {
   type UpdateCreditPackInput,
   type UpdatePlanInput,
 } from '../lib/types'
-import { useAuth } from '../auth/AuthContext'
+import { GuardedIconButton } from '../auth/permissions'
 import { BillingStatus } from '../components/BillingStatus'
 import { ConfirmDialog, Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
@@ -452,7 +452,6 @@ function PlanEditor({
 /* -------------------------------------------------------------------------- */
 
 function CreditPacksSection({ query }: { query: ReturnType<typeof useQuery<CreditPack[]>> }) {
-  const { isSuperAdmin } = useAuth()
   const { toast, toastError } = useToast()
 
   const [creating, setCreating] = useState(false)
@@ -557,15 +556,14 @@ function CreditPacksSection({ query }: { query: ReturnType<typeof useQuery<Credi
                       >
                         <IconEdit />
                       </button>
-                      {isSuperAdmin && (
-                        <button
-                          className="btn btn-icon danger"
-                          onClick={() => setDeleting(pack)}
-                          title="Delete pack (SUPERADMIN)"
-                        >
-                          <IconTrash />
-                        </button>
-                      )}
+                      <GuardedIconButton
+                        action="deleting credit packs"
+                        title="Delete pack"
+                        danger
+                        onClick={() => setDeleting(pack)}
+                      >
+                        <IconTrash />
+                      </GuardedIconButton>
                     </td>
                   </tr>
                 ))}

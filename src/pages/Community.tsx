@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '../lib/useApi'
 import { formatDateTime, initialsOf, relativeTime } from '../lib/format'
 import type { CommunityMember, UpdateCommunityInput } from '../lib/types'
 import { useAuth } from '../auth/AuthContext'
+import { GuardedIconButton } from '../auth/permissions'
 import { ConfirmDialog, Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import {
@@ -144,15 +145,14 @@ export function Community() {
                       >
                         <IconEdit />
                       </button>
-                      {isSuperAdmin && (
-                        <button
-                          className="btn btn-icon danger"
-                          onClick={() => setDeleting(e)}
-                          title="Remove member (SUPERADMIN)"
-                        >
-                          <IconTrash />
-                        </button>
-                      )}
+                      <GuardedIconButton
+                        action="removing community members"
+                        title="Remove member"
+                        danger
+                        onClick={() => setDeleting(e)}
+                      >
+                        <IconTrash />
+                      </GuardedIconButton>
                     </td>
                   </tr>
                 ))}
@@ -190,7 +190,7 @@ export function Community() {
       {!isSuperAdmin && (
         <InfoNote title="Deleting requires SUPERADMIN">
           Your role can list and edit community members. Removal is restricted to SUPERADMIN, so
-          the delete action is hidden.
+          the delete action is locked.
         </InfoNote>
       )}
 

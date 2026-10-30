@@ -20,7 +20,8 @@ interface AuthContextValue {
   user: AuthUser | null
   /** False until the boot-time refresh attempt has settled. */
   ready: boolean
-  login: (email: string, password: string) => Promise<void>
+  /** Resolves to the signed-in staff user, so the caller can greet them by role. */
+  login: (email: string, password: string) => Promise<AuthUser>
   logout: () => Promise<void>
   /** True for SUPERADMIN only — the role gate on role changes, admin CRUD and deletes. */
   isSuperAdmin: boolean
@@ -125,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(nextUser)
+    return nextUser
   }, [])
 
   const logout = useCallback(async () => {

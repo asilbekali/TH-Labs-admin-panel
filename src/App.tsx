@@ -17,6 +17,9 @@ import { Users } from './pages/Users'
 import { Community } from './pages/Community'
 import { Feedback } from './pages/Feedback'
 import { FeedbackInboxProvider } from './lib/feedbackInbox'
+import { PermissionProvider } from './auth/permissions'
+import { Mail } from './pages/Mail'
+import { Games } from './pages/Games'
 
 /**
  * Blocks the app until the boot-time refresh has settled, so a signed-in user
@@ -43,7 +46,9 @@ function RequireAuth() {
   // staff session — mounted above Layout, which renders the nav badge.
   return (
     <FeedbackInboxProvider>
-      <Layout />
+      <PermissionProvider>
+        <Layout />
+      </PermissionProvider>
     </FeedbackInboxProvider>
   )
 }
@@ -64,6 +69,8 @@ export default function App() {
               <Route path="feedback" element={<Feedback />} />
               <Route path="billing" element={<Billing />} />
               <Route path="activity" element={<Activity />} />
+              <Route path="mail" element={<Mail />} />
+              <Route path="games" element={<Games />} />
             </Route>
             <Route path="/wait-list" element={<Navigate to="/community" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />

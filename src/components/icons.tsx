@@ -234,3 +234,49 @@ export const IconBug = (p: Props) => (
     <path d="M8 11H4m16 0h-4M8 16H4.5m15.5 0H16M9.5 6.5 8 4m6.5 2.5L16 4" />
   </svg>
 )
+
+export const IconEyeOff = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-2.9 3.9" />
+    <path d="M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6" />
+    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    <path d="m2 2 20 20" />
+  </svg>
+)
+
+export const IconLock = (p: Props) => (
+  <svg {...base} {...p}>
+    <rect x="4" y="11" width="16" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>
+)
+
+export const IconMail = (p: Props) => (
+  <svg {...base} {...p}>
+    <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
+    <path d="m3 6 9 7 9-7" />
+  </svg>
+)
+
+export const IconSend = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M22 2 11 13" />
+    <path d="M22 2 15 22l-4-9-9-4 20-7Z" />
+  </svg>
+)
+
+export const IconReply = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </svg>
+)
+
+export const IconGamepad = (p: Props) => (
+  <svg {...base} {...p}>
+    <path d="M6 12h4M8 10v4" />
+    <circle cx="15.5" cy="11" r=".6" fill="currentColor" />
+    <circle cx="17.5" cy="13.5" r=".6" fill="currentColor" />
+    <path d="M17.3 5H6.7a4 4 0 0 0-4 3.6l-.6 6.2A3 3 0 0 0 5.1 18c1 0 1.9-.5 2.4-1.3L9 15h6l1.5 1.7c.5.8 1.4 1.3 2.4 1.3a3 3 0 0 0 3-3.2l-.6-6.2A4 4 0 0 0 17.3 5Z" />
+  </svg>
+)

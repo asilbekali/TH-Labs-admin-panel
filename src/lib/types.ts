@@ -443,6 +443,38 @@ export interface UpdateFeedbackInput {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Staff email — POST /v1/admin/mail                                           */
+/* -------------------------------------------------------------------------- */
+
+export interface MailRecipient {
+  email: string
+  /** Used for the greeting; the API falls back to the part before the @. */
+  name?: string
+}
+
+/** ADMIN and SUPERADMIN. One branded email per recipient — nobody sees the list. */
+export interface SendMailInput {
+  /** 1–200. */
+  recipients: MailRecipient[]
+  subject: string
+  /** Blank lines become paragraphs. */
+  message: string
+  /** Headline inside the card. The API defaults to a greeting. */
+  heading?: string
+  /** Set when replying to a feedback message, for the activity log. */
+  feedbackId?: number
+}
+
+export interface SendMailResult {
+  total: number
+  sent: number
+  failed: Array<{ email: string; error: string }>
+}
+
+/** The API's own cap on one send. */
+export const MAIL_RECIPIENT_LIMIT = 200
+
+/* -------------------------------------------------------------------------- */
 /* Price tokens — /v1/price-token                                              */
 /* -------------------------------------------------------------------------- */
 

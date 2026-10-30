@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { setAccessToken } from '../lib/api'
@@ -141,17 +141,39 @@ describe('login', () => {
 })
 
 describe('role locks for an ADMIN', () => {
-  it('keeps SUPERADMIN actions visible but explains instead of calling the API', async () => {
+  it("locks the role button on the ADMIN's own row and explains instead of calling the API", async () => {
     stubApi({ me: ADMIN })
     await open('/users')
 
-    const roleButtons = await screen.findAllByRole('button', { name: 'Change role' })
-    expect(roleButtons[0].className).toContain('locked')
+    const ownRow = (await screen.findByText('admin@th-labs.uz')).closest('tr')!
+    const ownButton = within(ownRow).getByRole('button', { name: 'Change role' })
+    expect(ownButton.className).toContain('locked')
 
-    fireEvent.click(roleButtons[0])
+    fireEvent.click(ownButton)
     expect(await screen.findByText(/You don't have access to do this/)).toBeTruthy()
-    expect(screen.getByText(/Changing user roles/)).toBeTruthy()
+    expect(screen.getByText(/Changing this account's role/)).toBeTruthy()
     expect(writes).toEqual([])
+  })
+
+  it('lets an ADMIN make a USER an ADMIN, but never offers SUPERADMIN', async () => {
+    stubApi({ me: ADMIN })
+    await open('/users')
+
+    const adaRow = (await screen.findByText('ada@example.com')).closest('tr')!
+    const button = within(adaRow).getByRole('button', { name: 'Change role' })
+    expect(button.className).not.toContain('locked')
+
+    fireEvent.click(button)
+    const dialog = (await screen.findByText("Change this user's role")).closest('[role="dialog"]') ?? document.body
+    const select = (dialog as HTMLElement).querySelector('select')!
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['USER', 'ADMIN'])
+
+    fireEvent.change(select, { target: { value: 'ADMIN' } })
+    fireEvent.click(document.querySelector('button[form="change-role-form"]')!)
+
+    await waitFor(() => expect(writes).toHaveLength(1))
+    expect(writes[0]).toMatchObject({ method: 'PATCH', body: { role: 'ADMIN' } })
+    expect(writes[0].url).toMatch(/\/users\/42\/role$/)
   })
 
   it('shows an access-denied page for admin records', async () => {

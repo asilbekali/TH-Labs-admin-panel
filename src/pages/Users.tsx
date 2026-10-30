@@ -6,7 +6,7 @@ import { formatDateTime, formatNumber, initialsOf, relativeTime } from '../lib/f
 import type { ApiUser, CreateUserInput, Role, UpdateUserInput } from '../lib/types'
 import { ROLES } from '../lib/types'
 import { useAuth } from '../auth/AuthContext'
-import { GuardedIconButton } from '../auth/permissions'
+import { GuardedIconButton, usePermissions } from '../auth/permissions'
 import { ConfirmDialog, Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import {
@@ -34,6 +34,7 @@ type SortDir = 'asc' | 'desc'
 export function Users() {
   const { toast, toastError } = useToast()
   const { user: me } = useAuth()
+  const { isSuperAdmin } = usePermissions()
   const users = useQuery((signal) => endpoints.users(signal))
 
   const [search, setSearch] = useState('')
@@ -229,13 +230,26 @@ export function Users() {
                       >
                         <IconMail />
                       </Link>
-                      <GuardedIconButton
-                        action="changing user roles"
-                        title="Change role"
-                        onClick={() => setChangingRole(u)}
-                      >
-                        <IconShield />
-                      </GuardedIconButton>
+                      {/* An ADMIN may move other accounts between USER and
+                          ADMIN; its own role and SUPERADMIN accounts stay
+                          SUPERADMIN-only, which the API enforces too. */}
+                      {isSuperAdmin || (u.id !== me?.id && u.role !== 'SUPERADMIN') ? (
+                        <button
+                          className="btn btn-icon"
+                          onClick={() => setChangingRole(u)}
+                          title="Change role"
+                        >
+                          <IconShield />
+                        </button>
+                      ) : (
+                        <GuardedIconButton
+                          action="changing this account's role"
+                          title="Change role"
+                          onClick={() => setChangingRole(u)}
+                        >
+                          <IconShield />
+                        </GuardedIconButton>
+                      )}
                       {/* The API lets anyone delete their own account; only a
                           SUPERADMIN reaches somebody else's. */}
                       {u.id === me?.id ? (
@@ -315,6 +329,7 @@ export function Users() {
         <ChangeRoleModal
           user={changingRole}
           isSelf={me?.id === changingRole.id}
+          isSuperAdmin={isSuperAdmin}
           onClose={() => setChangingRole(null)}
           onDone={() => {
             setChangingRole(null)
@@ -532,7 +547,7 @@ export function EditUserModal({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Role change — SUPERADMIN only                                               */
+/* Role change — ADMIN: USER <-> ADMIN; SUPERADMIN: any                       */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -545,11 +560,13 @@ export function EditUserModal({
 function ChangeRoleModal({
   user,
   isSelf,
+  isSuperAdmin,
   onClose,
   onDone,
 }: {
   user: ApiUser
   isSelf: boolean
+  isSuperAdmin: boolean
   onClose: () => void
   onDone: () => void
 }) {
@@ -558,6 +575,8 @@ function ChangeRoleModal({
 
   const change = useMutation((next: Role) => endpoints.changeUserRole(user.id, next))
   const unchanged = role === user.role
+  // Mirrors the API: only a SUPERADMIN can hand out SUPERADMIN.
+  const options = isSuperAdmin ? ROLES : ROLES.filter((r) => r !== 'SUPERADMIN')
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -577,7 +596,11 @@ function ChangeRoleModal({
   return (
     <Modal
       title="Change this user's role"
-      subtitle="SUPERADMIN only. The API is the authority — it will refuse if your role is not sufficient."
+      subtitle={
+        isSuperAdmin
+          ? 'You can set any role.'
+          : 'As an ADMIN you can switch accounts between USER and ADMIN.'
+      }
       onClose={onClose}
       footer={
         <>
@@ -613,7 +636,7 @@ function ChangeRoleModal({
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
           >
-            {ROLES.map((r) => (
+            {options.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>

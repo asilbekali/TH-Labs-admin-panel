@@ -1,18 +1,25 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { endpoints } from '../lib/api'
+import { endpoints, isMissingRoute } from '../lib/api'
 import { useMutation, useQuery } from '../lib/useApi'
 import { formatDateTime, formatNumber, initialsOf, relativeTime } from '../lib/format'
-import type { ApiUser, CreateUserInput, Role, UpdateUserInput } from '../lib/types'
-import { ROLES } from '../lib/types'
+import type {
+  ApiUser,
+  CreateUserInput,
+  GiftCreditsInput,
+  Role,
+  UpdateUserInput,
+} from '../lib/types'
+import { GIFT_CREDITS_MAX, ROLES } from '../lib/types'
 import { useAuth } from '../auth/AuthContext'
-import { GuardedIconButton } from '../auth/permissions'
+import { GuardedIconButton, usePermissions } from '../auth/permissions'
 import { ConfirmDialog, Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import {
   EmptyState,
   ErrorState,
   Field,
+  InfoNote,
   Pagination,
   RoleBadge,
   TableSkeleton,
@@ -20,6 +27,7 @@ import {
 import {
   IconEdit,
   IconEye,
+  IconGift,
   IconMail,
   IconRefresh,
   IconSearch,
@@ -34,6 +42,7 @@ type SortDir = 'asc' | 'desc'
 export function Users() {
   const { toast, toastError } = useToast()
   const { user: me } = useAuth()
+  const { isSuperAdmin } = usePermissions()
   const users = useQuery((signal) => endpoints.users(signal))
 
   const [search, setSearch] = useState('')
@@ -47,6 +56,7 @@ export function Users() {
   const [editing, setEditing] = useState<ApiUser | null>(null)
   const [deleting, setDeleting] = useState<ApiUser | null>(null)
   const [changingRole, setChangingRole] = useState<ApiUser | null>(null)
+  const [gifting, setGifting] = useState<ApiUser | null>(null)
 
   const removeUser = useMutation((id: number | string) => endpoints.deleteUser(id))
 
@@ -230,12 +240,32 @@ export function Users() {
                         <IconMail />
                       </Link>
                       <GuardedIconButton
-                        action="changing user roles"
-                        title="Change role"
-                        onClick={() => setChangingRole(u)}
+                        action="gifting credits"
+                        title="Gift credits"
+                        onClick={() => setGifting(u)}
                       >
-                        <IconShield />
+                        <IconGift />
                       </GuardedIconButton>
+                      {/* An ADMIN may move other accounts between USER and
+                          ADMIN; its own role and SUPERADMIN accounts stay
+                          SUPERADMIN-only, which the API enforces too. */}
+                      {isSuperAdmin || (u.id !== me?.id && u.role !== 'SUPERADMIN') ? (
+                        <button
+                          className="btn btn-icon"
+                          onClick={() => setChangingRole(u)}
+                          title="Change role"
+                        >
+                          <IconShield />
+                        </button>
+                      ) : (
+                        <GuardedIconButton
+                          action="changing this account's role"
+                          title="Change role"
+                          onClick={() => setChangingRole(u)}
+                        >
+                          <IconShield />
+                        </GuardedIconButton>
+                      )}
                       {/* The API lets anyone delete their own account; only a
                           SUPERADMIN reaches somebody else's. */}
                       {u.id === me?.id ? (
@@ -315,9 +345,21 @@ export function Users() {
         <ChangeRoleModal
           user={changingRole}
           isSelf={me?.id === changingRole.id}
+          isSuperAdmin={isSuperAdmin}
           onClose={() => setChangingRole(null)}
           onDone={() => {
             setChangingRole(null)
+            users.refetch()
+          }}
+        />
+      )}
+
+      {gifting && (
+        <GiftCreditsModal
+          user={gifting}
+          onClose={() => setGifting(null)}
+          onDone={() => {
+            setGifting(null)
             users.refetch()
           }}
         />
@@ -532,7 +574,7 @@ export function EditUserModal({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Role change — SUPERADMIN only                                               */
+/* Role change — ADMIN: USER <-> ADMIN; SUPERADMIN: any                       */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -545,11 +587,13 @@ export function EditUserModal({
 function ChangeRoleModal({
   user,
   isSelf,
+  isSuperAdmin,
   onClose,
   onDone,
 }: {
   user: ApiUser
   isSelf: boolean
+  isSuperAdmin: boolean
   onClose: () => void
   onDone: () => void
 }) {
@@ -558,6 +602,8 @@ function ChangeRoleModal({
 
   const change = useMutation((next: Role) => endpoints.changeUserRole(user.id, next))
   const unchanged = role === user.role
+  // Mirrors the API: only a SUPERADMIN can hand out SUPERADMIN.
+  const options = isSuperAdmin ? ROLES : ROLES.filter((r) => r !== 'SUPERADMIN')
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -577,7 +623,11 @@ function ChangeRoleModal({
   return (
     <Modal
       title="Change this user's role"
-      subtitle="SUPERADMIN only. The API is the authority — it will refuse if your role is not sufficient."
+      subtitle={
+        isSuperAdmin
+          ? 'You can set any role.'
+          : 'As an ADMIN you can switch accounts between USER and ADMIN.'
+      }
       onClose={onClose}
       footer={
         <>
@@ -613,7 +663,7 @@ function ChangeRoleModal({
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
           >
-            {ROLES.map((r) => (
+            {options.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>
@@ -643,6 +693,144 @@ function ChangeRoleModal({
               )}
             </div>
           </div>
+        )}
+      </form>
+    </Modal>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Gift credits — SUPERADMIN only                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * POST /v1/admin/billing/users/:id/credits.
+ *
+ * Free credits are the one thing here given away rather than sold, so — like
+ * the role dialog — this names the exact account and spells out the amount
+ * before anything is sent. A gift cannot be taken back from the panel.
+ */
+export function GiftCreditsModal({
+  user,
+  onClose,
+  onDone,
+}: {
+  user: ApiUser
+  onClose: () => void
+  onDone: () => void
+}) {
+  const { toast, toastError } = useToast()
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+
+  const gift = useMutation((input: GiftCreditsInput) => endpoints.giftCredits(user.id, input))
+
+  const credits = Number(amount)
+  const valid = Number.isInteger(credits) && credits >= 1 && credits <= GIFT_CREDITS_MAX
+  const invalid = amount !== '' && !valid
+  const balance = typeof user.credits === 'number' ? user.credits : null
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!valid) return
+    try {
+      const input: GiftCreditsInput = { credits }
+      if (note.trim()) input.note = note.trim()
+      const result = await gift.mutate(input)
+      toast(
+        `Gifted ${formatNumber(credits)} credits to ${user.email}` +
+          (typeof result?.balance === 'number'
+            ? ` — balance ${formatNumber(result.balance)}`
+            : ''),
+      )
+      onDone()
+    } catch (err) {
+      // A missing route gets the note below instead of a bare "Cannot POST".
+      if (!isMissingRoute(err)) toastError(err, 'Could not gift the credits')
+    }
+  }
+
+  return (
+    <Modal
+      title="Gift free credits"
+      subtitle="Added to the balance straight away, with no payment. This cannot be undone here."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose} disabled={gift.pending}>
+            Cancel
+          </button>
+          <button
+            className="btn btn-primary"
+            form="gift-credits-form"
+            type="submit"
+            disabled={gift.pending || !valid}
+          >
+            {gift.pending && <span className="spinner" />}
+            {valid ? `Gift ${formatNumber(credits)} credits` : 'Gift credits'}
+          </button>
+        </>
+      }
+    >
+      <form id="gift-credits-form" onSubmit={onSubmit}>
+        <div className="confirm-target">
+          <div className="avatar">{initialsOf(user.name, user.email)}</div>
+          <div>
+            <div className="cell-user-name">{user.name || '—'}</div>
+            <div className="cell-user-email">{user.email}</div>
+          </div>
+          <div className="spacer" />
+          {balance != null && (
+            <span className="text-faint nowrap">{formatNumber(balance)} credits now</span>
+          )}
+        </div>
+
+        <Field
+          label="Credits to gift"
+          hint={
+            valid && balance != null
+              ? `New balance: ${formatNumber(balance + credits)} credits.`
+              : `A whole number from 1 to ${formatNumber(GIFT_CREDITS_MAX)}.`
+          }
+          error={
+            invalid
+              ? `Enter a whole number from 1 to ${formatNumber(GIFT_CREDITS_MAX)}.`
+              : undefined
+          }
+        >
+          <input
+            className="input"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={GIFT_CREDITS_MAX}
+            step={1}
+            required
+            autoFocus
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="500"
+          />
+        </Field>
+
+        <Field
+          label="Note (optional)"
+          hint="The user sees this next to the gift in their credit history."
+        >
+          <input
+            className="input"
+            maxLength={200}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Thanks for the bug reports"
+          />
+        </Field>
+
+        {isMissingRoute(gift.error) && (
+          <InfoNote tone="warn" title="The API cannot gift credits yet">
+            This API build has no <code>POST /v1/admin/billing/users/:id/credits</code> — deploy
+            the API, then try again. Nothing was granted.
+          </InfoNote>
         )}
       </form>
     </Modal>

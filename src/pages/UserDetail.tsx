@@ -7,8 +7,9 @@ import type { ApiUser } from '../lib/types'
 import { ConfirmDialog } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import { ErrorState, RoleBadge } from '../components/ui'
-import { IconBack, IconEdit, IconRefresh, IconTrash } from '../components/icons'
-import { EditUserModal } from './Users'
+import { usePermissions } from '../auth/permissions'
+import { IconBack, IconEdit, IconGift, IconRefresh, IconTrash } from '../components/icons'
+import { EditUserModal, GiftCreditsModal } from './Users'
 
 /** Rendered explicitly in the header, so they'd be redundant in the grid. */
 const HEADER_FIELDS = new Set(['name', 'email', 'role'])
@@ -19,11 +20,13 @@ export function UserDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { toast, toastError } = useToast()
+  const { requireSuperAdmin } = usePermissions()
 
   const user = useQuery((signal) => endpoints.user(id, signal), [id])
   const remove = useMutation(() => endpoints.deleteUser(id))
 
   const [editing, setEditing] = useState(false)
+  const [gifting, setGifting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function onDelete() {
@@ -95,6 +98,15 @@ export function UserDetail() {
           <IconEdit />
           Edit
         </button>
+        <button
+          className="btn"
+          onClick={() => {
+            if (requireSuperAdmin('gifting credits')) setGifting(true)
+          }}
+        >
+          <IconGift />
+          Gift credits
+        </button>
         <button className="btn btn-danger" onClick={() => setConfirmDelete(true)}>
           <IconTrash />
           Delete
@@ -150,6 +162,17 @@ export function UserDetail() {
           onClose={() => setEditing(false)}
           onDone={() => {
             setEditing(false)
+            user.refetch()
+          }}
+        />
+      )}
+
+      {gifting && (
+        <GiftCreditsModal
+          user={record}
+          onClose={() => setGifting(false)}
+          onDone={() => {
+            setGifting(false)
             user.refetch()
           }}
         />

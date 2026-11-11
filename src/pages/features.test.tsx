@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { setAccessToken } from '../lib/api'
@@ -48,10 +48,12 @@ function stubApi({
   me,
   signedIn = true,
   mailStatus = 200,
+  giftStatus = 201,
 }: {
   me: typeof ADMIN
   signedIn?: boolean
   mailStatus?: number
+  giftStatus?: number
 }) {
   writes = []
   vi.stubGlobal(
@@ -74,6 +76,14 @@ function stubApi({
       if (url.includes('/auth/refresh')) {
         return signedIn ? reply(200, { accessToken: 'tok', user: me }) : reply(401, { statusCode: 401, message: 'Unauthorized' })
       }
+      if (url.includes('/credits')) {
+        if (giftStatus === 404) return reply(404, { statusCode: 404, message: `Cannot POST ${url}` })
+        return reply(201, {
+          user: { id: 42, email: 'ada@example.com', name: 'Ada' },
+          granted: 500,
+          balance: 800,
+        })
+      }
       if (url.includes('/admin/mail')) {
         if (mailStatus === 404) return reply(404, { statusCode: 404, message: 'Cannot POST /v1/admin/mail' })
         return reply(200, { total: 1, sent: 1, failed: [] })
@@ -81,7 +91,7 @@ function stubApi({
       if (url.includes('/users/all-users-data')) {
         return reply(200, [
           me,
-          { id: 42, email: 'ada@example.com', name: 'Ada', role: 'USER', createdAt: '2026-09-01T00:00:00.000Z' },
+          { id: 42, email: 'ada@example.com', name: 'Ada', role: 'USER', credits: 300, createdAt: '2026-09-01T00:00:00.000Z' },
         ])
       }
       if (url.includes('/feedback')) {
@@ -141,17 +151,39 @@ describe('login', () => {
 })
 
 describe('role locks for an ADMIN', () => {
-  it('keeps SUPERADMIN actions visible but explains instead of calling the API', async () => {
+  it("locks the role button on the ADMIN's own row and explains instead of calling the API", async () => {
     stubApi({ me: ADMIN })
     await open('/users')
 
-    const roleButtons = await screen.findAllByRole('button', { name: 'Change role' })
-    expect(roleButtons[0].className).toContain('locked')
+    const ownRow = (await screen.findByText('admin@th-labs.uz')).closest('tr')!
+    const ownButton = within(ownRow).getByRole('button', { name: 'Change role' })
+    expect(ownButton.className).toContain('locked')
 
-    fireEvent.click(roleButtons[0])
+    fireEvent.click(ownButton)
     expect(await screen.findByText(/You don't have access to do this/)).toBeTruthy()
-    expect(screen.getByText(/Changing user roles/)).toBeTruthy()
+    expect(screen.getByText(/Changing this account's role/)).toBeTruthy()
     expect(writes).toEqual([])
+  })
+
+  it('lets an ADMIN make a USER an ADMIN, but never offers SUPERADMIN', async () => {
+    stubApi({ me: ADMIN })
+    await open('/users')
+
+    const adaRow = (await screen.findByText('ada@example.com')).closest('tr')!
+    const button = within(adaRow).getByRole('button', { name: 'Change role' })
+    expect(button.className).not.toContain('locked')
+
+    fireEvent.click(button)
+    const dialog = (await screen.findByText("Change this user's role")).closest('[role="dialog"]') ?? document.body
+    const select = (dialog as HTMLElement).querySelector('select')!
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['USER', 'ADMIN'])
+
+    fireEvent.change(select, { target: { value: 'ADMIN' } })
+    fireEvent.click(document.querySelector('button[form="change-role-form"]')!)
+
+    await waitFor(() => expect(writes).toHaveLength(1))
+    expect(writes[0]).toMatchObject({ method: 'PATCH', body: { role: 'ADMIN' } })
+    expect(writes[0].url).toMatch(/\/users\/42\/role$/)
   })
 
   it('shows an access-denied page for admin records', async () => {
@@ -165,6 +197,81 @@ describe('role locks for an ADMIN', () => {
     await open('/users')
     const roleButtons = await screen.findAllByRole('button', { name: 'Change role' })
     expect(roleButtons[0].className).not.toContain('locked')
+  })
+})
+
+describe('gifting credits', () => {
+  async function openGiftDialog() {
+    const adaRow = (await screen.findByText('ada@example.com')).closest('tr')!
+    fireEvent.click(within(adaRow).getByRole('button', { name: 'Gift credits' }))
+    await screen.findByText('Gift free credits')
+    return document.querySelector('#gift-credits-form') as HTMLFormElement
+  }
+
+  it('locks the gift button for an ADMIN and explains instead of calling the API', async () => {
+    stubApi({ me: ADMIN })
+    await open('/users')
+
+    const adaRow = (await screen.findByText('ada@example.com')).closest('tr')!
+    const button = within(adaRow).getByRole('button', { name: 'Gift credits' })
+    expect(button.className).toContain('locked')
+
+    fireEvent.click(button)
+    expect(await screen.findByText(/You don't have access to do this/)).toBeTruthy()
+    expect(screen.getByText(/Gifting credits/)).toBeTruthy()
+    expect(writes).toEqual([])
+  })
+
+  it('lets a SUPERADMIN gift credits with a note', async () => {
+    stubApi({ me: SUPERADMIN })
+    await open('/users')
+
+    const form = await openGiftDialog()
+    const submit = document.querySelector('button[form="gift-credits-form"]') as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+
+    fireEvent.change(form.querySelector('input[type="number"]')!, { target: { value: '500' } })
+    expect(screen.getByText('New balance: 800 credits.')).toBeTruthy()
+    fireEvent.change(form.querySelector('input[maxlength="200"]')!, {
+      target: { value: ' Thanks for the bug reports ' },
+    })
+    fireEvent.click(submit)
+
+    await waitFor(() => expect(writes).toHaveLength(1))
+    expect(writes[0]).toMatchObject({
+      method: 'POST',
+      body: { credits: 500, note: 'Thanks for the bug reports' },
+    })
+    expect(writes[0].url).toMatch(/\/admin\/billing\/users\/42\/credits$/)
+    expect(await screen.findByText(/Gifted 500 credits to ada@example.com — balance 800/)).toBeTruthy()
+  })
+
+  it('refuses a fractional or out-of-range amount without calling the API', async () => {
+    stubApi({ me: SUPERADMIN })
+    await open('/users')
+
+    const form = await openGiftDialog()
+    const input = form.querySelector('input[type="number"]')!
+    const submit = document.querySelector('button[form="gift-credits-form"]') as HTMLButtonElement
+
+    for (const bad of ['0', '-5', '1.5', '100001']) {
+      fireEvent.change(input, { target: { value: bad } })
+      expect(submit.disabled).toBe(true)
+    }
+    fireEvent.submit(form)
+    expect(writes).toEqual([])
+  })
+
+  it('says so when the API build has no gift route', async () => {
+    stubApi({ me: SUPERADMIN, giftStatus: 404 })
+    await open('/users')
+
+    const form = await openGiftDialog()
+    fireEvent.change(form.querySelector('input[type="number"]')!, { target: { value: '50' } })
+    fireEvent.click(document.querySelector('button[form="gift-credits-form"]')!)
+
+    expect(await screen.findByText('The API cannot gift credits yet')).toBeTruthy()
+    expect(screen.getByText('Gift free credits')).toBeTruthy()
   })
 })
 

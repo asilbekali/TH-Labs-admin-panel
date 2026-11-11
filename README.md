@@ -180,7 +180,7 @@ covers this — those tests fail if the guard is reintroduced.
 | Dashboard | `admin/billing/overview`, `admin/logs*`, `/v1/feedback`, users, community | Billing health first, then a 24h chart, latest feedback and recent activity |
 | Billing | `/v1/admin/billing/*` | Status panel, plans (inline edit), credit pack CRUD |
 | Activity log | `/v1/admin/logs*` | Feed, filters, row detail, live updates |
-| Users | `/v1/users/*` | Search, filter, sort, edit, delete; role change (SUPERADMIN) |
+| Users | `/v1/users/*`, `admin/billing/users/{id}/credits` | Search, filter, sort, edit, delete; role change; gift credits (SUPERADMIN) |
 | User detail | `GET /v1/users/{id}` | Full record, rendered generically |
 | Feedback | `/v1/feedback*` | Inbox with status/kind/search filters, triage, staff notes; delete (SUPERADMIN) |
 | Community | `/v1/community` | List, search, edit, CSV export; delete (SUPERADMIN) |
@@ -206,6 +206,9 @@ hidden from an ADMIN, *and* still handled if the server refuses — the server i
 the authority:
 
 - changing a user's role
+- gifting free credits to a user (`POST /v1/admin/billing/users/{id}/credits` —
+  a real `ADMIN_ADJUSTMENT` ledger entry, capped at 100,000 per gift; the
+  optional note is shown to the user in their own credit history)
 - creating, editing or deleting admin records
 - deleting a credit pack
 - deleting a community entry

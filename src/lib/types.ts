@@ -76,6 +76,24 @@ export interface UpdateUserInput {
   password?: string
 }
 
+/** One gift is capped by the API — a typo guard, not a pricing limit. */
+export const GIFT_CREDITS_MAX = 100_000
+
+/** POST /v1/admin/billing/users/:id/credits — SUPERADMIN only. */
+export interface GiftCreditsInput {
+  /** 1–GIFT_CREDITS_MAX, whole credits. */
+  credits: number
+  /** Stored on the ledger entry, which the user sees in their own history. */
+  note?: string
+}
+
+export interface GiftCreditsResult {
+  user: Pick<ApiUser, 'id' | 'email' | 'name'>
+  granted: number
+  /** The account's balance after the gift. */
+  balance: number
+}
+
 /* -------------------------------------------------------------------------- */
 /* Admin accounts — the `Admin` table, NOT the accounts that sign in here      */
 /* -------------------------------------------------------------------------- */

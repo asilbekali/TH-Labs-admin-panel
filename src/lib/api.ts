@@ -289,6 +289,8 @@ import type {
   FeedbackQuery,
   FeedbackRow,
   FeedbackStatus,
+  GiftCreditsInput,
+  GiftCreditsResult,
   HealthResponse,
   Language,
   LogPage,
@@ -437,6 +439,12 @@ export const endpoints = {
   /** SUPERADMIN only. */
   changeUserRole: (id: number | string, role: Role) =>
     api.patch<unknown>(`/users/${id}/role`, { role }),
+  /**
+   * SUPERADMIN only. Adds free credits as a real ledger entry; a JSON 404
+   * means this API build predates the route.
+   */
+  giftCredits: (id: number | string, input: GiftCreditsInput) =>
+    api.post<GiftCreditsResult>(`/admin/billing/users/${id}/credits`, input),
 
   /* ------------------- admin accounts (SUPERADMIN only) ------------------ */
   admins: async (signal?: AbortSignal) =>

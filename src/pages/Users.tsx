@@ -1,10 +1,16 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { endpoints } from '../lib/api'
+import { endpoints, isMissingRoute } from '../lib/api'
 import { useMutation, useQuery } from '../lib/useApi'
 import { formatDateTime, formatNumber, initialsOf, relativeTime } from '../lib/format'
-import type { ApiUser, CreateUserInput, Role, UpdateUserInput } from '../lib/types'
-import { ROLES } from '../lib/types'
+import type {
+  ApiUser,
+  CreateUserInput,
+  GiftCreditsInput,
+  Role,
+  UpdateUserInput,
+} from '../lib/types'
+import { GIFT_CREDITS_MAX, ROLES } from '../lib/types'
 import { useAuth } from '../auth/AuthContext'
 import { GuardedIconButton, usePermissions } from '../auth/permissions'
 import { ConfirmDialog, Modal } from '../components/Modal'
@@ -13,6 +19,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  InfoNote,
   Pagination,
   RoleBadge,
   TableSkeleton,
@@ -20,6 +27,7 @@ import {
 import {
   IconEdit,
   IconEye,
+  IconGift,
   IconMail,
   IconRefresh,
   IconSearch,
@@ -48,6 +56,7 @@ export function Users() {
   const [editing, setEditing] = useState<ApiUser | null>(null)
   const [deleting, setDeleting] = useState<ApiUser | null>(null)
   const [changingRole, setChangingRole] = useState<ApiUser | null>(null)
+  const [gifting, setGifting] = useState<ApiUser | null>(null)
 
   const removeUser = useMutation((id: number | string) => endpoints.deleteUser(id))
 
@@ -230,6 +239,13 @@ export function Users() {
                       >
                         <IconMail />
                       </Link>
+                      <GuardedIconButton
+                        action="gifting credits"
+                        title="Gift credits"
+                        onClick={() => setGifting(u)}
+                      >
+                        <IconGift />
+                      </GuardedIconButton>
                       {/* An ADMIN may move other accounts between USER and
                           ADMIN; its own role and SUPERADMIN accounts stay
                           SUPERADMIN-only, which the API enforces too. */}
@@ -333,6 +349,17 @@ export function Users() {
           onClose={() => setChangingRole(null)}
           onDone={() => {
             setChangingRole(null)
+            users.refetch()
+          }}
+        />
+      )}
+
+      {gifting && (
+        <GiftCreditsModal
+          user={gifting}
+          onClose={() => setGifting(null)}
+          onDone={() => {
+            setGifting(null)
             users.refetch()
           }}
         />
@@ -666,6 +693,144 @@ function ChangeRoleModal({
               )}
             </div>
           </div>
+        )}
+      </form>
+    </Modal>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Gift credits — SUPERADMIN only                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * POST /v1/admin/billing/users/:id/credits.
+ *
+ * Free credits are the one thing here given away rather than sold, so — like
+ * the role dialog — this names the exact account and spells out the amount
+ * before anything is sent. A gift cannot be taken back from the panel.
+ */
+export function GiftCreditsModal({
+  user,
+  onClose,
+  onDone,
+}: {
+  user: ApiUser
+  onClose: () => void
+  onDone: () => void
+}) {
+  const { toast, toastError } = useToast()
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+
+  const gift = useMutation((input: GiftCreditsInput) => endpoints.giftCredits(user.id, input))
+
+  const credits = Number(amount)
+  const valid = Number.isInteger(credits) && credits >= 1 && credits <= GIFT_CREDITS_MAX
+  const invalid = amount !== '' && !valid
+  const balance = typeof user.credits === 'number' ? user.credits : null
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!valid) return
+    try {
+      const input: GiftCreditsInput = { credits }
+      if (note.trim()) input.note = note.trim()
+      const result = await gift.mutate(input)
+      toast(
+        `Gifted ${formatNumber(credits)} credits to ${user.email}` +
+          (typeof result?.balance === 'number'
+            ? ` — balance ${formatNumber(result.balance)}`
+            : ''),
+      )
+      onDone()
+    } catch (err) {
+      // A missing route gets the note below instead of a bare "Cannot POST".
+      if (!isMissingRoute(err)) toastError(err, 'Could not gift the credits')
+    }
+  }
+
+  return (
+    <Modal
+      title="Gift free credits"
+      subtitle="Added to the balance straight away, with no payment. This cannot be undone here."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose} disabled={gift.pending}>
+            Cancel
+          </button>
+          <button
+            className="btn btn-primary"
+            form="gift-credits-form"
+            type="submit"
+            disabled={gift.pending || !valid}
+          >
+            {gift.pending && <span className="spinner" />}
+            {valid ? `Gift ${formatNumber(credits)} credits` : 'Gift credits'}
+          </button>
+        </>
+      }
+    >
+      <form id="gift-credits-form" onSubmit={onSubmit}>
+        <div className="confirm-target">
+          <div className="avatar">{initialsOf(user.name, user.email)}</div>
+          <div>
+            <div className="cell-user-name">{user.name || '—'}</div>
+            <div className="cell-user-email">{user.email}</div>
+          </div>
+          <div className="spacer" />
+          {balance != null && (
+            <span className="text-faint nowrap">{formatNumber(balance)} credits now</span>
+          )}
+        </div>
+
+        <Field
+          label="Credits to gift"
+          hint={
+            valid && balance != null
+              ? `New balance: ${formatNumber(balance + credits)} credits.`
+              : `A whole number from 1 to ${formatNumber(GIFT_CREDITS_MAX)}.`
+          }
+          error={
+            invalid
+              ? `Enter a whole number from 1 to ${formatNumber(GIFT_CREDITS_MAX)}.`
+              : undefined
+          }
+        >
+          <input
+            className="input"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={GIFT_CREDITS_MAX}
+            step={1}
+            required
+            autoFocus
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="500"
+          />
+        </Field>
+
+        <Field
+          label="Note (optional)"
+          hint="The user sees this next to the gift in their credit history."
+        >
+          <input
+            className="input"
+            maxLength={200}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Thanks for the bug reports"
+          />
+        </Field>
+
+        {isMissingRoute(gift.error) && (
+          <InfoNote tone="warn" title="The API cannot gift credits yet">
+            This API build has no <code>POST /v1/admin/billing/users/:id/credits</code> — deploy
+            the API, then try again. Nothing was granted.
+          </InfoNote>
         )}
       </form>
     </Modal>

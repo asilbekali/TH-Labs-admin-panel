@@ -2484,3 +2484,492 @@ code,
 .reaction-verdict {
   color: var(--text-muted);
 }
+
+/* ==========================================================================
+   Agent City — the office TV (/city)
+   ========================================================================== */
+
+/*
+ * A night scene in both themes on purpose: it hangs on a wall, and lit windows
+ * only read against a dark sky. Type sizes use clamp() on the viewport so the
+ * same page reads from a laptop and from across the room on a TV.
+ */
+.tv {
+  --tv-sky-top: #0b1240;
+  --tv-sky-bottom: #1e3a8a;
+  --tv-ink: #eef2ff;
+  --tv-ink-faint: rgba(224, 231, 255, 0.62);
+  --tv-panel: rgba(8, 13, 40, 0.62);
+  --tv-line: rgba(255, 255, 255, 0.12);
+  --tv-user: #2dd4bf;
+  --tv-admin: #a78bfa;
+  --tv-superadmin: #fbbf24;
+  --tv-visitor: #e2e8f0;
+  --tv-good: #4ade80;
+  --tv-gold: #fcd34d;
+  --tv-fail: #fb7185;
+
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: clamp(10px, 1.2vw, 18px);
+  padding: clamp(12px, 1.6vw, 28px);
+  background: radial-gradient(1px 1px at 12% 18%, #fff8, transparent),
+    radial-gradient(1px 1px at 34% 8%, #fff6, transparent),
+    radial-gradient(1px 1px at 78% 22%, #fff7, transparent),
+    radial-gradient(1px 1px at 90% 6%, #fff5, transparent),
+    linear-gradient(180deg, var(--tv-sky-top), var(--tv-sky-bottom));
+  color: var(--tv-ink);
+  font-family: var(--font);
+}
+
+.tv-head {
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.4vw, 24px);
+  flex-wrap: wrap;
+}
+.tv-title {
+  font-family: var(--font-display);
+  font-size: clamp(22px, 2.4vw, 44px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.tv-by {
+  margin-left: 8px;
+  font-size: 0.45em;
+  font-weight: 500;
+  color: var(--tv-ink-faint);
+}
+.tv-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: clamp(12px, 1vw, 18px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.tv-live .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tv-good);
+  box-shadow: 0 0 12px var(--tv-good);
+  animation: tv-blink 2s ease-in-out infinite;
+}
+.tv-live.off .dot {
+  background: var(--tv-fail);
+  box-shadow: none;
+  animation: none;
+}
+.tv-clock {
+  display: grid;
+  justify-items: end;
+  font-family: var(--font-mono);
+  font-size: clamp(22px, 2.4vw, 44px);
+  font-weight: 600;
+  line-height: 1.05;
+}
+.tv-clock span {
+  font-family: var(--font);
+  font-size: 0.38em;
+  font-weight: 500;
+  color: var(--tv-ink-faint);
+}
+.tv-actions {
+  display: flex;
+  gap: 8px;
+}
+.tv-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--tv-line);
+  background: var(--tv-panel);
+  color: var(--tv-ink-faint);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.tv-btn:hover {
+  color: var(--tv-ink);
+}
+/* Nobody needs the buttons once it is up on the wall. */
+:fullscreen .tv-actions {
+  display: none;
+}
+
+.tv-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(8px, 1vw, 16px);
+}
+.tv-stat {
+  padding: clamp(10px, 1vw, 18px) clamp(12px, 1.2vw, 20px);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--tv-line);
+  background: var(--tv-panel);
+}
+.tv-stat-label {
+  font-size: clamp(11px, 0.95vw, 17px);
+  font-weight: 600;
+  color: var(--tv-ink-faint);
+}
+.tv-stat-value {
+  margin: 2px 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.4vw, 64px);
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.tv-stat.live .tv-stat-value {
+  color: var(--tv-user);
+}
+.tv-stat.good .tv-stat-value {
+  color: var(--tv-good);
+}
+.tv-stat.gold .tv-stat-value {
+  color: var(--tv-gold);
+}
+.tv-stat-note {
+  font-size: clamp(10px, 0.8vw, 14px);
+  color: var(--tv-ink-faint);
+}
+
+.tv-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 24vw, 440px);
+  gap: clamp(10px, 1.2vw, 18px);
+  min-height: 0;
+}
+.tv-city {
+  position: relative;
+  align-self: center;
+  width: 100%;
+  max-height: 100%;
+  aspect-ratio: 760 / 540;
+  margin: 0 auto;
+}
+.tv-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.tv-ground {
+  fill: #172554;
+}
+.tv-slab-l {
+  fill: #0f1a3d;
+}
+.tv-slab-r {
+  fill: #0a1230;
+}
+.tv-pad {
+  fill: #23336b;
+  stroke: #31458a;
+}
+.tv-park {
+  fill: #14532d;
+  stroke: #166534;
+}
+.tv-tree {
+  fill: #22c55e;
+  opacity: 0.85;
+}
+.tv-trunk {
+  stroke: #78350f;
+  stroke-width: 2;
+}
+.tv-road {
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1.2;
+  stroke-dasharray: 6 8;
+}
+.tv-lamp-post {
+  stroke: #64748b;
+  stroke-width: 1.2;
+}
+.tv-lamp {
+  fill: #fde68a;
+}
+.tv-lamp-glow {
+  fill: rgba(253, 230, 138, 0.16);
+}
+.tv-win {
+  fill: rgba(15, 23, 42, 0.55);
+}
+.tv-win.on {
+  fill: #fde68a;
+}
+.tv-building.busy {
+  filter: drop-shadow(0 0 10px rgba(253, 230, 138, 0.45));
+}
+
+.tv-label {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(15, 23, 42, 0.78);
+  font-size: clamp(9px, 0.85vw, 15px);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tv-label.busy {
+  border-color: rgba(253, 230, 138, 0.6);
+}
+.tv-label-count {
+  min-width: 1.5em;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--tv-gold);
+  color: #1c1917;
+  text-align: center;
+  font-size: 0.9em;
+}
+
+.tv-agent {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  /* A move to another page animates as a walk across town. */
+  transition:
+    left 1.8s ease-in-out,
+    top 1.8s ease-in-out;
+  color: var(--tv-user);
+}
+.tv-agent.role-admin {
+  color: var(--tv-admin);
+}
+.tv-agent.role-superadmin {
+  color: var(--tv-superadmin);
+}
+.tv-agent.visitor {
+  color: var(--tv-visitor);
+  opacity: 0.75;
+}
+.tv-agent-body {
+  display: block;
+  width: clamp(7px, 0.7vw, 12px);
+  height: clamp(11px, 1.1vw, 18px);
+  border-radius: 6px 6px 2px 2px;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+  animation: tv-bob 1.8s ease-in-out infinite;
+}
+.tv-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  max-width: clamp(170px, 18vw, 320px);
+  padding: 7px 11px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+  background: rgba(8, 13, 40, 0.94);
+  color: var(--tv-ink);
+  font-size: clamp(11px, 0.95vw, 16px);
+  line-height: 1.35;
+  box-shadow: var(--shadow);
+  animation: tv-pop 0.3s ease-out;
+}
+.tv-bubble-name {
+  display: grid;
+  font-weight: 700;
+}
+.tv-bubble-where {
+  font-size: 0.82em;
+  font-weight: 500;
+  color: var(--tv-ink-faint);
+}
+
+.tv-empty {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.8);
+  color: var(--tv-ink-faint);
+  font-size: clamp(12px, 1vw, 18px);
+  text-align: center;
+}
+.tv-celebrate {
+  position: absolute;
+  left: 50%;
+  top: 4%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: clamp(10px, 1vw, 16px) clamp(16px, 1.8vw, 28px);
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f59e0b, #ec4899);
+  color: #fff;
+  font-size: clamp(16px, 1.8vw, 32px);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 12px 40px rgba(236, 72, 153, 0.45);
+  animation: tv-pop 0.4s ease-out;
+  z-index: 10;
+}
+.tv-celebrate-emoji {
+  font-size: 1.3em;
+}
+
+.tv-side {
+  display: grid;
+  grid-auto-rows: min-content;
+  gap: clamp(8px, 1vw, 14px);
+  overflow: hidden;
+}
+.tv-panel {
+  padding: clamp(10px, 1vw, 16px) clamp(12px, 1.1vw, 18px);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--tv-line);
+  background: var(--tv-panel);
+}
+.tv-panel h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: clamp(14px, 1.2vw, 22px);
+  font-weight: 600;
+}
+.tv-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: clamp(12px, 0.95vw, 17px);
+}
+.tv-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: background 0.4s;
+}
+.tv-list li.on {
+  background: rgba(255, 255, 255, 0.08);
+}
+.tv-list.compact li {
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 0;
+}
+.tv-list.compact .tv-muted {
+  margin-left: auto;
+}
+.tv-where {
+  margin-left: 6px;
+  font-size: 0.85em;
+  color: var(--tv-gold);
+}
+.tv-buy {
+  color: var(--tv-gold);
+}
+.tv-muted {
+  color: var(--tv-ink-faint);
+  font-size: 0.9em;
+  margin: 0;
+}
+.tv-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 0.45em;
+  border-radius: 50%;
+  background: var(--tv-user);
+}
+.tv-dot.role-admin {
+  background: var(--tv-admin);
+}
+.tv-dot.role-superadmin {
+  background: var(--tv-superadmin);
+}
+
+.tv-ticker {
+  display: grid;
+  gap: 2px;
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
+  background: rgba(2, 6, 23, 0.55);
+  font-family: var(--font-mono);
+  font-size: clamp(11px, 0.9vw, 16px);
+}
+.tv-ticker-row {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tv-ticker-row strong {
+  color: var(--tv-user);
+}
+.tv-ticker-row.failed {
+  color: var(--tv-fail);
+}
+.tv-ticker-time {
+  margin-right: 10px;
+  color: var(--tv-ink-faint);
+}
+
+@keyframes tv-bob {
+  50% {
+    transform: translateY(-2px);
+  }
+}
+@keyframes tv-blink {
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes tv-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px) scale(0.96);
+  }
+}
+
+@media (max-width: 1100px) {
+  .tv-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .tv-main {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .tv-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tv-celebrate {
+    white-space: normal;
+    border-radius: var(--radius-lg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-agent {
+    transition: none;
+  }
+  .tv-agent-body,
+  .tv-live .dot,
+  .tv-bubble,
+  .tv-celebrate {
+    animation: none;
+  }
+}

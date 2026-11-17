@@ -302,6 +302,7 @@ import type {
   SendMailInput,
   SendMailResult,
   StatsBucket,
+  CityResponse,
   UpdateAdminInput,
   UpdateCommunityInput,
   UpdateCreditPackInput,
@@ -551,6 +552,10 @@ export const endpoints = {
     params: { bucket?: StatsBucket; from?: string; to?: string; action?: string; actorId?: number },
     signal?: AbortSignal,
   ) => api.get<LogStats>(`/admin/logs/stats${queryString(params)}`, signal),
+
+  /** Live presence plus today's numbers for the office screen. */
+  city: (from: string, signal?: AbortSignal) =>
+    api.get<CityResponse>(`/admin/city${queryString({ from })}`, signal),
 
   /* ------------------------- read-only extras ---------------------------- */
   health: (signal?: AbortSignal) => api.get<HealthResponse>('/health', signal),

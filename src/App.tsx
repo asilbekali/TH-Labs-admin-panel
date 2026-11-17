@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 // The React entry point, not /next — this is a Vite SPA. Mounted here rather
 // than inside Layout so the login screen is measured too; it only injects its
 // script in a production build and no-ops elsewhere.
@@ -20,12 +20,13 @@ import { FeedbackInboxProvider } from './lib/feedbackInbox'
 import { PermissionProvider } from './auth/permissions'
 import { Mail } from './pages/Mail'
 import { Games } from './pages/Games'
+import { AgentCity } from './pages/AgentCity'
 
 /**
  * Blocks the app until the boot-time refresh has settled, so a signed-in user
  * reloading a deep link isn't bounced to /login for a frame.
  */
-function RequireAuth() {
+function RequireAuth({ bare = false }: { bare?: boolean }) {
   const { user, ready } = useAuth()
   const location = useLocation()
 
@@ -47,7 +48,8 @@ function RequireAuth() {
   return (
     <FeedbackInboxProvider>
       <PermissionProvider>
-        <Layout />
+        {/* `bare` drops the sidebar and top bar — for the office TV. */}
+        {bare ? <Outlet /> : <Layout />}
       </PermissionProvider>
     </FeedbackInboxProvider>
   )
@@ -71,6 +73,9 @@ export default function App() {
               <Route path="activity" element={<Activity />} />
               <Route path="mail" element={<Mail />} />
               <Route path="games" element={<Games />} />
+            </Route>
+            <Route element={<RequireAuth bare />}>
+              <Route path="city" element={<AgentCity />} />
             </Route>
             <Route path="/wait-list" element={<Navigate to="/community" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />

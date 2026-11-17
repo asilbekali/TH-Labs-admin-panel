@@ -333,6 +333,61 @@ export interface LogStats {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Agent City — GET /v1/admin/city                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One open tab, from the site's and the Studio's presence beats. Live state
+ * lives in the API's memory, so it is "who is here right now", not history.
+ */
+export interface CityPerson {
+  visitorId: string
+  /** "landing" is th-labs.uz itself; "app" is the signed-in Studio. */
+  site: 'landing' | 'app' | string
+  path: string
+  /** Set by the page when it knows ("Dubbing intro.mp4 into Uzbek"). */
+  doing: string | null
+  /** When they arrived on this path. */
+  since: string
+  lastSeen: string
+  /** null → an anonymous visitor. */
+  user: { id: number; name: string; email: string; role: Role } | null
+}
+
+export interface CityToday {
+  /** Distinct browsers on th-labs.uz. */
+  visitors: number
+  /** Distinct browsers in the signed-in Studio. */
+  appVisitors: number
+  pageviews: number
+  signups: number
+  purchases: number
+  subscriptions: number
+  tokenPacks: number
+  /** Credits granted by purchases today. */
+  tokensSold: number
+  /** Cents per currency — never summed across currencies. */
+  revenue: Record<string, number>
+}
+
+export interface CityResponse {
+  now: string
+  from: string
+  people: CityPerson[]
+  today: CityToday
+  recentSignups: Array<{ id: number; name: string; email: string; createdAt: string }>
+  recentPurchases: Array<{
+    id: string
+    amountCents: number
+    currency: string
+    description: string
+    kind: 'subscription' | 'tokens'
+    createdAt: string
+    user: { id: number; name: string; email: string }
+  }>
+}
+
+/* -------------------------------------------------------------------------- */
 /* Health & languages — read-only                                              */
 /* -------------------------------------------------------------------------- */
 

@@ -127,6 +127,45 @@ const FEEDBACK_ANON = {
  */
 const API_404 = { statusCode: 404, message: 'Cannot GET /v1/admin/logs/actions' }
 
+const NOW_ISO = new Date().toISOString()
+
+const CITY = {
+  now: NOW_ISO,
+  from: NOW_ISO,
+  people: [
+    {
+      visitorId: 'v_ada0000001',
+      site: 'app',
+      path: '/studio',
+      doing: 'Dubbing intro.mp4 into Uzbek',
+      since: NOW_ISO,
+      lastSeen: NOW_ISO,
+      user: { id: 42, name: 'Ada Lovelace', email: 'ada@example.com', role: 'USER' },
+    },
+    {
+      visitorId: 'v_anon000001',
+      site: 'landing',
+      path: '/',
+      doing: null,
+      since: NOW_ISO,
+      lastSeen: NOW_ISO,
+      user: null,
+    },
+  ],
+  today: {
+    visitors: 128, appVisitors: 17, pageviews: 412, signups: 9, purchases: 3,
+    subscriptions: 1, tokenPacks: 2, tokensSold: 2400, revenue: { usd: 3700 },
+  },
+  recentSignups: [{ id: 42, name: 'Ada Lovelace', email: 'ada@example.com', createdAt: NOW_ISO }],
+  recentPurchases: [
+    {
+      id: 'pay_1', amountCents: 1900, currency: 'usd', description: 'Studio Max',
+      kind: 'subscription', createdAt: NOW_ISO,
+      user: { id: 42, name: 'Ada Lovelace', email: 'ada@example.com' },
+    },
+  ],
+}
+
 const HTML_404 =
   '<!DOCTYPE html><html lang="en"><body><h1>404</h1><p>This page could not be found.</p></body></html>'
 
@@ -144,6 +183,7 @@ function stubApi() {
         if (url.includes('/admin/billing/plans')) return { ok: true, payload: { plans: PLANS } }
         if (url.includes('/admin/billing/credit-packs')) return { ok: true, payload: { packs: PACKS } }
         if (url.includes('/admin/logs/stream')) return { ok: false, payload: null }
+        if (url.includes('/admin/city')) return { ok: true, payload: CITY }
         if (url.includes('/admin/logs/actions')) {
           return { ok: true, payload: ['user.role.change', 'billing.plan.update'] }
         }
@@ -315,6 +355,21 @@ describe('dashboard', () => {
       expect(screen.getByText(/Purchases cannot grant credits/i)).toBeTruthy()
     })
     expect(screen.getByText(/Changed the role of ada@example.com/)).toBeTruthy()
+  })
+})
+
+describe('agent city', () => {
+  it('puts each person in the building for the page they have open', async () => {
+    await open('/city')
+
+    await waitFor(() => expect(screen.getByText('128')).toBeTruthy())
+    // The sidebar's own page names, and the count of people inside.
+    expect(screen.getAllByText('Studio').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Website').length).toBeGreaterThan(0)
+    // Shortened for a public screen, and what the page said she is doing.
+    expect(screen.getAllByText('Ada L.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Dubbing intro.mp4 into Uzbek').length).toBeGreaterThan(0)
+    expect(screen.getByText('$37')).toBeTruthy()
   })
 })
 

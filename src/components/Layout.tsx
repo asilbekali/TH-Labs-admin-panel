@@ -12,6 +12,7 @@ import {
   IconCard,
   IconDashboard,
   IconGamepad,
+  IconGlobe,
   IconList,
   IconLock,
   IconLogout,
@@ -41,6 +42,7 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
     label: 'Manage',
     items: [
       { to: '/', label: 'Dashboard', icon: IconDashboard, end: true },
+      { to: '/city', label: 'Agent City', icon: IconGlobe },
       { to: '/users', label: 'Users', icon: IconUsers },
       { to: '/feedback', label: 'Feedback', icon: IconMessage, badge: 'feedback' },
       { to: '/mail', label: 'Send email', icon: IconMail },
